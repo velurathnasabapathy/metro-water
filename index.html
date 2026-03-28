@@ -48,11 +48,26 @@ footer { background:#fff; border-top:1px solid #e9ecef; padding:1rem 0; margin-t
 <!-- File Setup Overlay -->
 <!-- Firebase loading overlay — shown briefly while connecting, hidden once data loads -->
 <div id="fb-loading-overlay" style="display:flex;position:fixed;inset:0;background:rgba(15,30,50,.92);z-index:9999;align-items:center;justify-content:center;">
-  <div class="card p-4 text-center" style="max-width:360px;width:90%">
+  <div class="card p-4 text-center" style="max-width:420px;width:90%">
     <div style="font-size:3rem;color:#1a6faf"><i class="bi bi-droplet-fill"></i></div>
     <h4 class="fw-bold mt-2 mb-1">Metro Water — Block B</h4>
     <p id="fb-loading-msg" class="text-muted mb-3" style="font-size:.9rem">Connecting to cloud…</p>
     <div class="spinner-border text-primary mx-auto" role="status" id="fb-spinner"><span class="visually-hidden">Loading…</span></div>
+
+    <!-- Shown when cloud is empty — first-time setup -->
+    <div id="fb-import-section" style="display:none">
+      <p class="text-muted mb-3" style="font-size:.9rem">
+        Your cloud database is empty. Import your existing data file to get started.
+      </p>
+      <label class="btn btn-success w-100 mb-2" style="cursor:pointer">
+        <i class="bi bi-upload me-2"></i>Import Existing Data File (JSON)
+        <input type="file" id="fb-import-input" accept=".json" style="display:none" onchange="handleImportFile(this)">
+      </label>
+      <button class="btn btn-outline-secondary w-100" onclick="skipImport()">
+        <i class="bi bi-plus-lg me-1"></i>Start Fresh (no existing data)
+      </button>
+    </div>
+
     <p id="fb-error-msg" class="text-danger mt-3 mb-0 small" style="display:none"></p>
     <button id="fb-retry-btn" class="btn btn-primary mt-3" style="display:none" onclick="init()">Retry</button>
   </div>
@@ -518,6 +533,47 @@ function _fbShowError(msg){
 function _fbHideOverlay(){
   const o = document.getElementById('fb-loading-overlay');
   if(o) o.style.display='none';
+}
+function _fbShowImportSection(){
+  const spin  = document.getElementById('fb-spinner');
+  const imp   = document.getElementById('fb-import-section');
+  const msg   = document.getElementById('fb-loading-msg');
+  if(spin) spin.style.display='none';
+  if(msg)  msg.style.display='none';
+  if(imp)  imp.style.display='block';
+}
+
+// Called when user picks their existing JSON file
+async function handleImportFile(input){
+  const file = input.files[0];
+  if(!file) return;
+  try{
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    // Merge all known keys into DB
+    ['residents','bookings','expenses','payments','readings','meterlog',
+     'consOverrides','closingBalOverrides','closedMonths','openMonths'].forEach(k=>{
+      if(Array.isArray(parsed[k])) DB[k] = parsed[k];
+    });
+    if(!Array.isArray(DB.closedMonths)) DB.closedMonths=[];
+    if(!Array.isArray(DB.openMonths))   DB.openMonths=[];
+    Object.keys(parsed).filter(k=>k.startsWith('_')).forEach(k=>DB[k]=parsed[k]);
+    // Push everything to Firestore immediately
+    await _fbDb.collection('metro-water').doc('blockb').set(DB);
+    _fbHideOverlay();
+    _fbSetStatus('✓ Data imported', '#4caf50');
+    setTimeout(()=>_fbSetStatus('Cloud sync on','#aaa'), 3000);
+    seedData(); runMigrations(); bootApp();
+  } catch(e){
+    const err = document.getElementById('fb-error-msg');
+    if(err){ err.textContent='Import failed: '+e.message; err.style.display='block'; }
+  }
+}
+
+// User chooses to start with no existing data
+function skipImport(){
+  _fbHideOverlay();
+  seedData(); runMigrations(); bootApp();
 }
 
 const S = {
@@ -2171,6 +2227,11 @@ async function init(){
     const msgEl = document.getElementById('fb-loading-msg');
     if(msgEl) msgEl.textContent = 'Loading your data…';
     await _fbLoad();
+    // If cloud has no residents yet, it's a fresh database — prompt for import
+    if(!DB.residents || DB.residents.length === 0){
+      _fbShowImportSection();
+      return;
+    }
     seedData();
     runMigrations();
     _fbHideOverlay();
