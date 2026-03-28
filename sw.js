@@ -1,5 +1,5 @@
 // Metro Water PWA — Service Worker
-const CACHE = 'metro-water-v1';
+const CACHE = 'metro-water-v2';
 const ASSETS = [
   '/metro-water/',
   '/metro-water/index.html',
@@ -10,6 +10,7 @@ const ASSETS = [
   'https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css',
   'https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js',
   'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js',
+  'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js',
 ];
 
 // Install: cache all static assets
