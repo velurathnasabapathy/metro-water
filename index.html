@@ -17,6 +17,7 @@
 <!-- Firebase SDK (compat build — works as plain script tags, no bundler needed) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <style>
 :root { --primary:#1a6faf; --primary-dark:#145a8f; --accent:#e8f4fd; }
 body { background:#f5f7fa; font-family:'Segoe UI',sans-serif; }
@@ -103,6 +104,54 @@ footer { background:#fff; border-top:1px solid #e9ecef; padding:1rem 0; margin-t
   <a onclick="showTab('readings')"  id="mn-readings"><i class="bi bi-speedometer"></i>Readings</a>
 </nav>
 
+<!-- ── Login Overlay ─────────────────────────────────────────── -->
+<div id="login-overlay" style="display:none;position:fixed;inset:0;background:rgba(15,30,50,.95);z-index:10000;align-items:center;justify-content:center;">
+  <div class="card p-4" style="max-width:400px;width:92%;border-radius:16px;">
+    <div class="text-center mb-3">
+      <div style="font-size:2.8rem;color:#1a6faf"><i class="bi bi-droplet-fill"></i></div>
+      <h5 class="fw-bold mb-0">Metro Water — Block B</h5>
+      <p class="text-muted small mb-0">Sign in to continue</p>
+    </div>
+
+    <!-- Phone OTP section -->
+    <div id="auth-phone-section">
+      <label class="form-label small fw-semibold"><i class="bi bi-phone me-1 text-primary"></i>Mobile Number</label>
+      <div class="input-group mb-2">
+        <span class="input-group-text">+91</span>
+        <input type="tel" id="auth-phone" class="form-control" placeholder="9xxxxxxxxx" maxlength="10" inputmode="numeric">
+        <button class="btn btn-primary" onclick="authSendOtp()">Send OTP</button>
+      </div>
+      <div id="auth-otp-row" style="display:none">
+        <div class="input-group mb-1">
+          <input type="text" id="auth-otp" class="form-control" placeholder="Enter 6-digit OTP" maxlength="6" inputmode="numeric">
+          <button class="btn btn-success" onclick="authVerifyOtp()">Verify</button>
+        </div>
+        <p class="text-muted" style="font-size:.78rem">OTP sent to +91 <span id="auth-phone-display"></span>. <a href="#" onclick="authResetPhone();return false;">Change</a></p>
+      </div>
+      <div id="auth-recaptcha"></div>
+    </div>
+
+    <!-- Divider -->
+    <div class="d-flex align-items-center my-3">
+      <hr class="flex-grow-1"><span class="px-2 text-muted small">or</span><hr class="flex-grow-1">
+    </div>
+
+    <!-- Email magic link section -->
+    <div id="auth-email-section">
+      <label class="form-label small fw-semibold"><i class="bi bi-envelope me-1 text-primary"></i>Email Address</label>
+      <div class="input-group mb-2">
+        <input type="email" id="auth-email" class="form-control" placeholder="you@example.com" inputmode="email">
+        <button class="btn btn-outline-primary" onclick="authSendEmailLink()">Send Link</button>
+      </div>
+      <div id="auth-email-sent" style="display:none" class="alert alert-success py-2 small mb-0">
+        <i class="bi bi-check-circle me-1"></i>Sign-in link sent! Check your inbox and tap the link.
+      </div>
+    </div>
+
+    <p id="auth-error" class="text-danger small mt-3 mb-0" style="display:none"></p>
+  </div>
+</div>
+
 <!-- File Setup Overlay -->
 <!-- Firebase loading overlay — shown briefly while connecting, hidden once data loads -->
 <div id="fb-loading-overlay" style="display:flex;position:fixed;inset:0;background:rgba(15,30,50,.92);z-index:9999;align-items:center;justify-content:center;">
@@ -135,6 +184,8 @@ footer { background:#fff; border-top:1px solid #e9ecef; padding:1rem 0; margin-t
   <div class="container">
     <span class="navbar-brand"><i class="bi bi-droplet-fill me-2"></i>Metro Water — Block B</span>
     <span id="fb-status-badge" class="text-white-50 small ms-2 d-none d-lg-inline" style="font-size:.75rem;"><i class="bi bi-cloud-fill me-1"></i><span id="fb-status-text">Connecting…</span></span>
+    <span id="auth-user-badge" class="text-white-50 small ms-3 d-none d-lg-inline" style="font-size:.75rem;display:none!important;"></span>
+    <button id="auth-signout-btn" onclick="authSignOut()" class="btn btn-sm btn-outline-light ms-2 py-0" style="display:none;font-size:.75rem;"><i class="bi bi-box-arrow-right me-1"></i>Sign Out</button>
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMenu">
       <span class="navbar-toggler-icon"></span>
     </button>
@@ -2284,13 +2335,217 @@ function bootApp(){
   renderDashboard();
 }
 
+// ================================================================
+// AUTHENTICATION  — Firebase Phone OTP + Email Magic Link
+// ================================================================
+let _fbAuth      = null;
+let _currentUser = null;   // { uid, phone, email, residentId, isAdmin, name }
+let _recaptchaVerifier = null;
+let _confirmationResult = null;
+
+const ADMIN_PHONES  = ['+919940258884'];          // Velu's number
+const ADMIN_EMAILS  = ['velu.rathnasabapathy@gmail.com'];
+const EMAIL_LINK_SETTINGS = {
+  url: 'https://velurathnasabapathy.github.io/metro-water/',
+  handleCodeInApp: true
+};
+
+function _authInit(){
+  if(_fbAuth) return;
+  _fbAuth = firebase.auth(_fbApp);
+}
+
+// ── Show / hide login overlay ────────────────────────────────────
+function showLoginOverlay(){
+  const el = document.getElementById('login-overlay');
+  if(el) el.style.display = 'flex';
+}
+function hideLoginOverlay(){
+  const el = document.getElementById('login-overlay');
+  if(el) el.style.display = 'none';
+}
+function _authSetError(msg){
+  const el = document.getElementById('auth-error');
+  if(el){ el.textContent = msg; el.style.display = msg ? 'block' : 'none'; }
+}
+
+// ── Phone OTP flow ───────────────────────────────────────────────
+async function authSendOtp(){
+  _authSetError('');
+  const raw = document.getElementById('auth-phone').value.trim().replace(/\D/g,'');
+  if(raw.length !== 10){ _authSetError('Please enter a valid 10-digit mobile number.'); return; }
+  const phone = '+91' + raw;
+
+  try{
+    if(!_recaptchaVerifier){
+      _recaptchaVerifier = new firebase.auth.RecaptchaVerifier('auth-recaptcha', {
+        size: 'invisible',
+        callback: () => {}
+      });
+    }
+    _confirmationResult = await _fbAuth.signInWithPhoneNumber(phone, _recaptchaVerifier);
+    document.getElementById('auth-phone-display').textContent = raw;
+    document.getElementById('auth-otp-row').style.display = 'block';
+    document.getElementById('auth-phone').disabled = true;
+    document.querySelector('[onclick="authSendOtp()"]').disabled = true;
+    _authSetError('');
+  } catch(e){
+    _authSetError('Could not send OTP: ' + e.message);
+    if(_recaptchaVerifier){ _recaptchaVerifier.clear(); _recaptchaVerifier = null; }
+  }
+}
+
+async function authVerifyOtp(){
+  _authSetError('');
+  const code = document.getElementById('auth-otp').value.trim();
+  if(code.length < 6){ _authSetError('Please enter the 6-digit OTP.'); return; }
+  try{
+    await _confirmationResult.confirm(code);
+    // onAuthStateChanged will handle the rest
+  } catch(e){
+    _authSetError('Invalid OTP. Please try again.');
+  }
+}
+
+function authResetPhone(){
+  document.getElementById('auth-otp-row').style.display = 'none';
+  document.getElementById('auth-phone').disabled = false;
+  document.getElementById('auth-phone').value = '';
+  document.querySelector('[onclick="authSendOtp()"]').disabled = false;
+  _confirmationResult = null;
+  if(_recaptchaVerifier){ _recaptchaVerifier.clear(); _recaptchaVerifier = null; }
+  _authSetError('');
+}
+
+// ── Email magic link flow ────────────────────────────────────────
+async function authSendEmailLink(){
+  _authSetError('');
+  const email = document.getElementById('auth-email').value.trim();
+  if(!email || !email.includes('@')){ _authSetError('Please enter a valid email address.'); return; }
+  try{
+    await _fbAuth.sendSignInLinkToEmail(email, EMAIL_LINK_SETTINGS);
+    localStorage.setItem('mwEmailForSignIn', email);
+    document.getElementById('auth-email-sent').style.display = 'block';
+    document.getElementById('auth-email').disabled = true;
+    document.querySelector('[onclick="authSendEmailLink()"]').disabled = true;
+  } catch(e){
+    _authSetError('Could not send link: ' + e.message);
+  }
+}
+
+// Handle email link sign-in on page load (user tapped the link in inbox)
+async function _authHandleEmailLink(){
+  if(!_fbAuth.isSignInWithEmailLink(window.location.href)) return false;
+  let email = localStorage.getItem('mwEmailForSignIn');
+  if(!email){
+    email = window.prompt('Please confirm your email address to complete sign-in:');
+    if(!email) return false;
+  }
+  try{
+    await _fbAuth.signInWithEmailLink(email, window.location.href);
+    localStorage.removeItem('mwEmailForSignIn');
+    // Clean URL
+    window.history.replaceState({}, document.title, window.location.pathname);
+    return true;
+  } catch(e){
+    console.error('Email link sign-in failed:', e);
+    return false;
+  }
+}
+
+// ── Map Firebase user → resident profile ─────────────────────────
+function _authMapUser(firebaseUser){
+  const phone = firebaseUser.phoneNumber || '';      // e.g. "+919940258884"
+  const email = (firebaseUser.email || '').toLowerCase();
+
+  const isAdmin = ADMIN_PHONES.includes(phone) || ADMIN_EMAILS.includes(email);
+
+  // Try to find matching resident by phone or email
+  const residents = DB.residents || [];
+  let resident = null;
+  if(phone){
+    const digits = phone.replace(/\D/g,'').slice(-10);  // last 10 digits
+    resident = residents.find(r => r.mobile && r.mobile.replace(/\D/g,'').slice(-10) === digits);
+  }
+  if(!resident && email){
+    resident = residents.find(r => r.email && r.email.toLowerCase() === email);
+  }
+
+  _currentUser = {
+    uid:        firebaseUser.uid,
+    phone, email,
+    residentId: resident?.id || null,
+    isAdmin,
+    name:       resident?.name || (isAdmin ? 'Admin' : firebaseUser.email || phone),
+  };
+  return _currentUser;
+}
+
+// ── Apply UI based on role ───────────────────────────────────────
+function _authApplyRole(){
+  if(!_currentUser) return;
+  const { isAdmin, name } = _currentUser;
+
+  // Show user badge + sign-out in navbar
+  const badge = document.getElementById('auth-user-badge');
+  const signoutBtn = document.getElementById('auth-signout-btn');
+  if(badge){ badge.textContent = '👤 ' + (name || ''); badge.style.display = 'inline'; }
+  if(signoutBtn) signoutBtn.style.display = 'inline-block';
+
+  if(isAdmin){
+    // Admin: show all tabs
+    document.getElementById('mobile-nav').style.display = 'flex';
+    document.getElementById('mainNav').style.display = '';
+  } else {
+    // Resident: hide admin-only tabs, show only statement
+    const adminOnlyTabs = ['bookings','expenses','residents','readings'];
+    adminOnlyTabs.forEach(t => {
+      const mobileLink = document.getElementById('mn-' + t);
+      if(mobileLink) mobileLink.style.display = 'none';
+      // Hide desktop nav links
+      document.querySelectorAll('#mainNav .nav-link').forEach(l => {
+        if(l.textContent.toLowerCase().includes(t.replace('readings','reading').replace('residents','resident')))
+          l.parentElement.style.display = 'none';
+      });
+    });
+    // Default to statement tab for residents
+    showTab('statement');
+  }
+}
+
+// ── Sign out ─────────────────────────────────────────────────────
+async function authSignOut(){
+  if(!confirm('Sign out of Metro Water?')) return;
+  await _fbAuth.signOut();
+  _currentUser = null;
+  // Reset UI
+  document.getElementById('auth-signout-btn').style.display = 'none';
+  const badge = document.getElementById('auth-user-badge');
+  if(badge) badge.style.display = 'none';
+  showLoginOverlay();
+  // Reset phone form
+  authResetPhone();
+  document.getElementById('auth-email').value = '';
+  document.getElementById('auth-email').disabled = false;
+  document.querySelector('[onclick="authSendEmailLink()"]').disabled = false;
+  document.getElementById('auth-email-sent').style.display = 'none';
+  document.getElementById('auth-otp-row').style.display = 'none';
+  _authSetError('');
+}
+
 async function init(){
   try{
     _fbInit();
+    _authInit();
+
+    // Handle email magic-link sign-in (user tapped the link in their inbox)
+    await _authHandleEmailLink();
+
     const msgEl = document.getElementById('fb-loading-msg');
     if(msgEl) msgEl.textContent = 'Loading your data…';
     await _fbLoad();
-    // If cloud has no residents yet, it's a fresh database — prompt for import
+
+    // If cloud has no residents yet, prompt for import
     if(!DB.residents || DB.residents.length === 0){
       _fbShowImportSection();
       return;
@@ -2299,7 +2554,20 @@ async function init(){
     runMigrations();
     _fbHideOverlay();
     _fbSetStatus('Cloud sync on', '#aaa');
-    bootApp();
+
+    // Watch auth state — show login or boot app accordingly
+    _fbAuth.onAuthStateChanged(async firebaseUser => {
+      if(firebaseUser){
+        _authMapUser(firebaseUser);
+        hideLoginOverlay();
+        bootApp();
+        _authApplyRole();
+      } else {
+        // No user logged in — show login screen
+        showLoginOverlay();
+      }
+    });
+
   } catch(e){
     console.error('Firebase init failed:', e);
     _fbShowError('Could not connect to cloud: ' + e.message + '. Check your internet connection and try again.');
