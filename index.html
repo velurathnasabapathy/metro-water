@@ -2,8 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Metro Water — Block B</title>
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1a6faf">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MetroWater">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
 <!-- Firebase SDK (compat build — works as plain script tags, no bundler needed) -->
@@ -36,6 +44,46 @@ footer { background:#fff; border-top:1px solid #e9ecef; padding:1rem 0; margin-t
 #whatsapp-pre { background:#f8f9fa; padding:1rem; border-radius:8px; font-size:.72rem; overflow-x:auto; white-space:pre-wrap; line-height:1.6; }
 .meter-highlight { background:#fff8e1; border-left:3px solid #ffc107; padding:.5rem .75rem; border-radius:0 8px 8px 0; font-size:.85rem; }
 @media(max-width:576px){ .stat-num{font-size:1.3rem} }
+
+/* ── Mobile / PWA styles ───────────────────────────────────────── */
+/* Bottom navigation bar (mobile only) */
+#mobile-nav {
+  display:none;
+  position:fixed; bottom:0; left:0; right:0;
+  background:#fff; border-top:1px solid #dee2e6;
+  z-index:1050; padding-bottom:env(safe-area-inset-bottom);
+}
+#mobile-nav a {
+  flex:1; display:flex; flex-direction:column; align-items:center;
+  justify-content:center; padding:6px 2px; font-size:.62rem;
+  color:#6c757d; text-decoration:none; gap:2px; cursor:pointer;
+  border:none; background:none;
+}
+#mobile-nav a i { font-size:1.25rem; }
+#mobile-nav a.active { color:var(--primary); font-weight:600; }
+
+/* Hide desktop nav links on mobile — keep hamburger gone too */
+@media(max-width:767px){
+  #mobile-nav { display:flex; }
+  body { padding-bottom:calc(64px + env(safe-area-inset-bottom)); }
+  .navbar-collapse { display:none!important; }
+  .navbar-toggler { display:none!important; }
+  .month-bar .container { flex-wrap:nowrap; gap:.5rem!important; }
+  /* Larger touch targets for action buttons */
+  .btn-action { padding:5px 10px; font-size:.82rem; }
+  /* Stat cards — 2 per row on phone */
+  .stat-card { padding:.8rem .4rem; }
+  /* Tighter section padding */
+  .container.pb-4 { padding-bottom:1rem!important; }
+  /* Tables scroll horizontally on small screens */
+  .table-responsive { -webkit-overflow-scrolling:touch; }
+  /* Card rows stack on phone */
+  h4.fw-bold { font-size:1.1rem; }
+  /* Month bar compact */
+  #monthSelect { max-width:130px!important; font-size:.85rem; }
+  /* Form inputs — bigger on touch */
+  .form-control, .form-select { font-size:16px!important; } /* prevents iOS zoom */
+}
 .btn-action { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; font-size:.8rem; line-height:1.5; border-radius:4px; border:1px solid transparent; cursor:pointer; white-space:nowrap; font-weight:500; }
 .btn-action-green { background:#198754; border-color:#198754; color:#fff; }
 .btn-action-green:hover { background:#157347; color:#fff; }
@@ -44,6 +92,16 @@ footer { background:#fff; border-top:1px solid #e9ecef; padding:1rem 0; margin-t
 </style>
 </head>
 <body>
+
+<!-- Mobile bottom navigation bar -->
+<nav id="mobile-nav">
+  <a onclick="showTab('dashboard')" id="mn-dashboard"><i class="bi bi-speedometer2"></i>Dashboard</a>
+  <a onclick="showTab('bookings')"  id="mn-bookings"><i class="bi bi-truck"></i>Bookings</a>
+  <a onclick="showTab('statement')" id="mn-statement"><i class="bi bi-file-earmark-text"></i>Statement</a>
+  <a onclick="showTab('expenses')"  id="mn-expenses"><i class="bi bi-receipt"></i>Expenses</a>
+  <a onclick="showTab('residents')" id="mn-residents"><i class="bi bi-people"></i>Residents</a>
+  <a onclick="showTab('readings')"  id="mn-readings"><i class="bi bi-speedometer"></i>Readings</a>
+</nav>
 
 <!-- File Setup Overlay -->
 <!-- Firebase loading overlay — shown briefly while connecting, hidden once data loads -->
@@ -829,13 +887,18 @@ function showTab(tab){
   document.querySelectorAll('#mainNav .nav-link').forEach(l=>l.classList.remove('active'));
   const idx={dashboard:0,bookings:1,expenses:2,readings:3,statement:4,residents:5}[tab];
   document.querySelectorAll('#mainNav .nav-link')[idx]?.classList.add('active');
+  // Sync mobile bottom nav active state
+  document.querySelectorAll('#mobile-nav a').forEach(a=>a.classList.remove('active'));
+  const mna=document.getElementById('mn-'+tab);
+  if(mna) mna.classList.add('active');
   activeTab=tab;
   // Hide month bar on dashboard (it is not used there)
   const mb=document.querySelector('.month-bar');
   if(mb) mb.style.display=tab==='dashboard'?'none':'';
   renderTab(tab);
+  window.scrollTo({top:0, behavior:'smooth'});
   const nav=document.getElementById('navMenu');
-  if(nav.classList.contains('show')) bootstrap.Collapse.getOrCreateInstance(nav).hide();
+  if(nav && nav.classList.contains('show')) bootstrap.Collapse.getOrCreateInstance(nav).hide();
 }
 function renderTab(tab){
   switch(tab){
@@ -2244,6 +2307,15 @@ async function init(){
 }
 
 init();
+
+// Register service worker for PWA / offline support
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('/metro-water/sw.js')
+      .then(()=>console.log('SW registered'))
+      .catch(e=>console.log('SW registration failed:', e));
+  });
+}
 </script>
 </body>
 </html>
