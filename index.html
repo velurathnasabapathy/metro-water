@@ -1,0 +1,2188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Metro Water — Block B</title>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+<!-- Firebase SDK (compat build — works as plain script tags, no bundler needed) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<style>
+:root { --primary:#1a6faf; --primary-dark:#145a8f; --accent:#e8f4fd; }
+body { background:#f5f7fa; font-family:'Segoe UI',sans-serif; }
+.navbar { background:var(--primary)!important; }
+.navbar-brand { font-weight:700; }
+.nav-link { color:rgba(255,255,255,.85)!important; cursor:pointer; }
+.nav-link:hover,.nav-link.active { color:#fff!important; font-weight:600; }
+.card { border:none; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,.07); }
+.card-header { border-radius:12px 12px 0 0!important; font-weight:600; background:var(--accent); }
+.btn-primary { background:var(--primary); border-color:var(--primary); }
+.btn-primary:hover { background:var(--primary-dark); border-color:var(--primary-dark); }
+.stat-num { font-size:1.8rem; font-weight:700; color:var(--primary); }
+.stat-label { font-size:.82rem; color:#6c757d; }
+.stat-card { text-align:center; padding:1.2rem; }
+.table th { background:var(--accent); color:#1a3a5c; font-size:.83rem; text-transform:uppercase; letter-spacing:.5px; }
+.table td { vertical-align:middle; font-size:.92rem; }
+.section { display:none; }
+.section.active { display:block; }
+.month-bar { background:#fff; border-bottom:1px solid #e9ecef; padding:.6rem 0; margin-bottom:1.5rem; }
+footer { background:#fff; border-top:1px solid #e9ecef; padding:1rem 0; margin-top:3rem; color:#6c757d; font-size:.85rem; }
+.badge-corp { background:#d4edda; color:#155724; font-weight:600; }
+.badge-private { background:#fff3cd; color:#856404; font-weight:600; }
+.badge-pending { background:#fff3cd; color:#856404; font-size:.78rem; }
+.badge-calculated { background:#d1ecf1; color:#0c5460; font-size:.78rem; }
+#whatsapp-pre { background:#f8f9fa; padding:1rem; border-radius:8px; font-size:.72rem; overflow-x:auto; white-space:pre-wrap; line-height:1.6; }
+.meter-highlight { background:#fff8e1; border-left:3px solid #ffc107; padding:.5rem .75rem; border-radius:0 8px 8px 0; font-size:.85rem; }
+@media(max-width:576px){ .stat-num{font-size:1.3rem} }
+.btn-action { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; font-size:.8rem; line-height:1.5; border-radius:4px; border:1px solid transparent; cursor:pointer; white-space:nowrap; font-weight:500; }
+.btn-action-green { background:#198754; border-color:#198754; color:#fff; }
+.btn-action-green:hover { background:#157347; color:#fff; }
+.btn-action-amber { background:#ffc107; border-color:#ffc107; color:#000; }
+.btn-action-amber:hover { background:#e0a800; color:#000; }
+</style>
+</head>
+<body>
+
+<!-- File Setup Overlay -->
+<!-- Firebase loading overlay — shown briefly while connecting, hidden once data loads -->
+<div id="fb-loading-overlay" style="display:flex;position:fixed;inset:0;background:rgba(15,30,50,.92);z-index:9999;align-items:center;justify-content:center;">
+  <div class="card p-4 text-center" style="max-width:360px;width:90%">
+    <div style="font-size:3rem;color:#1a6faf"><i class="bi bi-droplet-fill"></i></div>
+    <h4 class="fw-bold mt-2 mb-1">Metro Water — Block B</h4>
+    <p id="fb-loading-msg" class="text-muted mb-3" style="font-size:.9rem">Connecting to cloud…</p>
+    <div class="spinner-border text-primary mx-auto" role="status" id="fb-spinner"><span class="visually-hidden">Loading…</span></div>
+    <p id="fb-error-msg" class="text-danger mt-3 mb-0 small" style="display:none"></p>
+    <button id="fb-retry-btn" class="btn btn-primary mt-3" style="display:none" onclick="init()">Retry</button>
+  </div>
+</div>
+
+<nav class="navbar navbar-expand-lg navbar-dark mb-0">
+  <div class="container">
+    <span class="navbar-brand"><i class="bi bi-droplet-fill me-2"></i>Metro Water — Block B</span>
+    <span id="fb-status-badge" class="text-white-50 small ms-2 d-none d-lg-inline" style="font-size:.75rem;"><i class="bi bi-cloud-fill me-1"></i><span id="fb-status-text">Connecting…</span></span>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMenu">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navMenu">
+      <ul class="navbar-nav ms-auto" id="mainNav">
+        <li class="nav-item"><a class="nav-link" onclick="showTab('bookings')"><i class="bi bi-truck me-1"></i>Bookings</a></li>
+        <li class="nav-item"><a class="nav-link active" onclick="showTab('dashboard')"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a></li>
+        <li class="nav-item"><a class="nav-link" onclick="showTab('expenses')"><i class="bi bi-receipt me-1"></i>Expenses</a></li>
+        <li class="nav-item"><a class="nav-link" onclick="showTab('statement')"><i class="bi bi-file-earmark-text me-1"></i>Statement</a></li>
+        <li class="nav-item"><a class="nav-link" onclick="showTab('residents')"><i class="bi bi-people me-1"></i>Residents</a></li>
+        <li class="nav-item"><a class="nav-link" onclick="showTab('readings')"><i class="bi bi-speedometer me-1"></i>Readings</a></li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<div class="month-bar">
+  <div class="container d-flex align-items-center gap-3 flex-wrap">
+    <label class="text-muted small mb-0 fw-semibold">Month:</label>
+    <select id="monthSelect" class="form-select form-select-sm" style="max-width:180px" onchange="onMonthChange()"></select>
+    <button id="new-month-btn" class="btn btn-sm btn-outline-primary" onclick="promptNewMonth()"><i class="bi bi-plus-lg me-1"></i>New Month</button>
+    <span id="month-closed-badge" class="d-none badge bg-success ms-1"><i class="bi bi-lock-fill me-1"></i>Closed</span>
+  </div>
+</div>
+
+<div class="container pb-4">
+  <div id="alertBox"></div>
+
+  <!-- DASHBOARD -->
+  <div id="tab-dashboard" class="section active">
+    <h4 class="fw-bold mb-3" style="color:#1a3a5c"><i class="bi bi-speedometer2 me-2"></i>Dashboard — Consumption Trend</h4>
+    <div class="card">
+
+      <!-- Card header: title left, range preset buttons right -->
+      <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span><i class="bi bi-graph-up me-2"></i>Consumption Trend <span id="dash-range-badge" class="badge bg-primary small ms-1"></span></span>
+        <div class="btn-group btn-group-sm" role="group" aria-label="Date range">
+          <button class="btn btn-outline-primary dash-preset active" data-preset="3m">3M</button>
+          <button class="btn btn-outline-primary dash-preset" data-preset="6m">6M</button>
+          <button class="btn btn-outline-primary dash-preset" data-preset="year">1Y</button>
+          <button class="btn btn-outline-primary dash-preset" data-preset="custom">Custom ▾</button>
+        </div>
+      </div>
+
+      <!-- Custom date range row (visible only when Custom is active) -->
+      <div id="dash-custom-range" style="display:none" class="px-3 py-2 d-flex flex-wrap align-items-center gap-3 border-bottom bg-light">
+        <div class="d-flex align-items-center gap-2">
+          <label class="form-label small text-muted mb-0">From</label>
+          <select id="dash-from" class="form-select form-select-sm" style="width:auto" onchange="dashRender()"></select>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <label class="form-label small text-muted mb-0">To</label>
+          <select id="dash-to" class="form-select form-select-sm" style="width:auto" onchange="dashRender()"></select>
+        </div>
+        <div id="dash-range-err" class="small text-danger" style="display:none">
+          <i class="bi bi-exclamation-circle me-1"></i>"To" must be after "From"
+        </div>
+      </div>
+
+      <!-- Chips legend row -->
+      <div class="px-3 pt-2 pb-2 d-flex flex-wrap align-items-center gap-2" style="border-bottom:1px solid #f0f0f0;min-height:42px">
+        <div id="dash-legend-chips" class="d-flex flex-wrap gap-2 flex-grow-1"></div>
+        <a href="#" id="dash-toggle-all" onclick="dashToggleAll(event)"
+           class="small text-muted text-decoration-none ms-2" style="white-space:nowrap;font-size:.75rem">Deselect All</a>
+      </div>
+
+      <!-- Chart canvas -->
+      <div class="card-body" style="position:relative;min-height:480px;">
+        <canvas id="dash-chart"></canvas>
+        <!-- Wave animation overlay — pointer-events:none keeps chart tooltips working -->
+        <div id="dash-no-data" style="display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);white-space:nowrap" class="text-center text-muted">
+          <i class="bi bi-graph-up fs-1 d-block mb-2 opacity-25"></i>No consumption data for the selected range.
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- BOOKINGS -->
+  <div id="tab-bookings" class="section">
+    <h4 class="fw-bold mb-3" style="color:#1a3a5c"><i class="bi bi-truck me-2"></i>Water Bookings</h4>
+
+    <!-- Add Booking form -->
+    <div class="card mb-4">
+      <div class="card-header"><i class="bi bi-plus-circle me-2"></i>Add New Booking</div>
+      <div class="card-body">
+        <form onsubmit="addBooking(event)">
+          <div class="row g-3">
+
+            <!-- Row 1: Source toggle -->
+            <div class="col-12">
+              <label class="form-label small fw-semibold">Source *</label>
+              <div class="d-flex gap-3">
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="b-src" id="b-src-corp" value="Corp" checked onchange="onSourceChange()">
+                  <label class="form-check-label fw-semibold text-primary" for="b-src-corp">Corp</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="b-src" id="b-src-pvt" value="Private" onchange="onSourceChange()">
+                  <label class="form-check-label fw-semibold text-warning" for="b-src-pvt">Private</label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Row 2: Date, Booked By, Reference -->
+            <div class="col-md-3 col-6">
+              <label class="form-label small fw-semibold">Booking Date *</label>
+              <input type="date" id="b-date" class="form-control" required oninput="onBookingDateChange()">
+            </div>
+            <div class="col-md-3 col-6">
+              <label class="form-label small fw-semibold">Booked By *</label>
+              <select id="b-by" class="form-select" required><option value="">— Select —</option></select>
+            </div>
+            <div class="col-md-3 col-6">
+              <label class="form-label small fw-semibold">Paid By *</label>
+              <select id="b-paid-by" class="form-select" required><option value="">— Select —</option></select>
+            </div>
+            <div class="col-md-3 col-6">
+              <label class="form-label small fw-semibold">Booking Ref. <span class="text-muted fw-normal">(optional)</span></label>
+              <input type="text" id="b-no" class="form-control" placeholder="Corp reference no.">
+            </div>
+            <div class="col-md-3 col-6">
+              <label class="form-label small fw-semibold">Delivery Date</label>
+              <input type="date" id="b-delivery" class="form-control">
+            </div>
+
+            <!-- Row 3: Meter readings, Payment, Tip, Volume (Private only) -->
+            <div class="col-md-2">
+              <label class="form-label small fw-semibold">
+                <i class="bi bi-gauge text-warning me-1"></i>Start Reading <small class="text-muted fw-normal">(auto-filled)</small>
+              </label>
+              <input type="number" id="b-meter-start" class="form-control" placeholder="e.g. 1983451">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label small fw-semibold">
+                <i class="bi bi-gauge-fill text-success me-1"></i>End Reading <small class="text-muted fw-normal">(optional)</small>
+              </label>
+              <input type="number" id="b-meter-end" class="form-control" placeholder="e.g. 1984200">
+            </div>
+            <div class="col-md-2 col-6">
+              <label class="form-label small fw-semibold">Amount Paid (₹) *</label>
+              <input type="number" id="b-pay" class="form-control" value="828.30" step="0.01" required>
+            </div>
+            <div class="col-md-2 col-6" id="b-tip-wrap">
+              <label class="form-label small fw-semibold">Tip (₹)</label>
+              <input type="number" id="b-tip" class="form-control" value="100" readonly>
+            </div>
+            <div class="col-md-2 col-6" id="b-cap-wrap" style="display:none">
+              <label class="form-label small fw-semibold">Volume (L) *</label>
+              <input type="number" id="b-cap" class="form-control" placeholder="e.g. 6000">
+            </div>
+
+            <div class="col-12">
+              <button type="submit" class="btn btn-primary px-4"><i class="bi bi-plus-lg me-1"></i>Add Booking</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Bookings summary + table -->
+    <div id="bookings-summary-bar" class="alert alert-info py-2 mb-3" style="display:none"></div>
+    <div class="card mb-4">
+      <div class="card-header"><i class="bi bi-list-ul me-2"></i>Bookings — <span id="bookings-month-label"></span></div>
+      <div class="card-body p-0" id="bookings-list"></div>
+    </div>
+  </div>
+
+  <!-- EXPENSES -->
+  <div id="tab-expenses" class="section">
+    <h4 class="fw-bold mb-3" style="color:#1a3a5c"><i class="bi bi-receipt me-2"></i>Common Expenses</h4>
+    <div id="expenses-summary-bar" class="alert alert-info py-2 mb-3" style="display:none"></div>
+    <div class="card mb-4">
+      <div class="card-header"><i class="bi bi-plus-circle me-2"></i>Add Expense</div>
+      <div class="card-body">
+        <form onsubmit="addExpense(event)">
+          <div class="row g-3 align-items-end">
+            <div class="col-md-2 col-6">
+              <label class="form-label small fw-semibold">Date *</label>
+              <input type="date" id="e-date" class="form-control" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold">Description *</label>
+              <input type="text" id="e-desc" class="form-control" placeholder="e.g. Cleaning, Electrician, Security guard" required>
+            </div>
+            <div class="col-md-2 col-6">
+              <label class="form-label small fw-semibold">Amount (₹) *</label>
+              <input type="number" id="e-amt" class="form-control" step="0.01" required>
+            </div>
+            <div class="col-md-2">
+              <button type="submit" class="btn btn-primary w-100"><i class="bi bi-plus-lg me-1"></i>Add</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+    <div class="card"><div class="card-header"><i class="bi bi-list-ul me-2"></i>Expenses</div>
+      <div class="card-body p-0" id="expenses-list"></div></div>
+  </div>
+
+  <!-- READINGS (Individual flat meters) -->
+  <div id="tab-readings" class="section">
+    <h4 class="fw-bold mb-3" style="color:#1a3a5c"><i class="bi bi-speedometer me-2"></i>Individual Flat Meter Readings</h4>
+    <div class="alert alert-info py-2 mb-4">
+      <i class="bi bi-info-circle me-2"></i>
+      Enter the reading taken on <strong>1st <span id="readings-month-label"></span></strong>.
+      This closes the previous month and opens the current month.
+    </div>
+    <div class="card">
+      <div class="card-header"><i class="bi bi-pencil-square me-2"></i>Enter Readings — 1st of month</div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table align-middle mb-3">
+            <thead><tr><th style="width:28%">Flat Owner</th><th class="text-end">Prev Reading</th><th>Reading (1st of month)</th><th>Consumption (prev month)</th></tr></thead>
+            <tbody id="readings-tbody"></tbody>
+          </table>
+        </div>
+        <button class="btn btn-primary" onclick="saveReadings()"><i class="bi bi-save me-1"></i>Save All Readings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATEMENT -->
+  <div id="tab-statement" class="section">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+      <h4 class="fw-bold mb-0" style="color:#1a3a5c"><i class="bi bi-file-earmark-text me-2"></i>Monthly Statement</h4>
+      <div class="d-flex gap-2 align-items-center">
+        <div id="stmt-close-area"></div>
+        <button class="btn btn-success" onclick="showWhatsApp()"><i class="bi bi-whatsapp me-1"></i>Copy for WhatsApp</button>
+      </div>
+    </div>
+    <div id="stmt-due-banner" class="mb-3"></div>
+    <div id="stmt-migration-note" class="mb-3"></div>
+    <div class="row g-3 mb-4" id="stmt-stats"></div>
+    <div class="card mb-4">
+      <div class="card-header"><i class="bi bi-table me-2"></i>Statement — <span id="stmt-month-label"></span></div>
+      <div class="card-body p-0">
+        <div class="table-responsive" id="stmt-table"></div>
+      </div>
+      <div class="card-footer text-muted small">
+        <div>** Individual consumption includes Borewell water. &nbsp;|&nbsp; Balance in <span class="text-danger fw-semibold">red</span> = amount owed to block. <span class="text-success fw-semibold">Green</span> = advance/overpaid.</div>
+      </div>
+    </div>
+    <div class="card" id="payments-card">
+      <div class="card-header"><i class="bi bi-clock-history me-2"></i>Payment Receipts — <span id="payments-month-label"></span></div>
+      <div class="card-body p-0" id="payments-list"><div class="text-center text-muted py-3 small">No payments recorded yet for this month.</div></div>
+    </div>
+  </div>
+
+  <!-- RESIDENTS -->
+  <div id="tab-residents" class="section">
+    <h4 class="fw-bold mb-3" style="color:#1a3a5c"><i class="bi bi-people me-2"></i>Residents — Block B</h4>
+    <div class="card"><div class="card-body p-0" id="residents-table"></div></div>
+  </div>
+</div>
+
+<footer><div class="container text-center">Metro Water Management — Block B &nbsp;|&nbsp; Managed by Velu</div></footer>
+
+<!-- Edit Booking Modal -->
+<div class="modal fade" id="editBookingModal" tabindex="-1">
+  <div class="modal-dialog modal-lg"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Edit Booking</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <input type="hidden" id="eb-id">
+      <div class="row g-3">
+        <div class="col-md-4"><label class="form-label small fw-semibold">Source</label>
+          <select id="eb-source" class="form-select" onchange="onEditSourceChange()">
+            <option value="Corp">Corp</option><option value="Private">Private</option></select></div>
+        <div class="col-md-4"><label class="form-label small fw-semibold">Booking Date</label>
+          <input type="date" id="eb-date" class="form-control" required></div>
+        <div class="col-md-4"><label class="form-label small fw-semibold">Booking No.</label>
+          <input type="text" id="eb-no" class="form-control"></div>
+        <div class="col-md-4"><label class="form-label small fw-semibold">Booked By</label>
+          <select id="eb-by" class="form-select"><option value="">— Select —</option></select></div>
+        <div class="col-md-4"><label class="form-label small fw-semibold">Paid By</label>
+          <select id="eb-paid-by" class="form-select"><option value="">— Select —</option></select></div>
+        <div class="col-md-4"><label class="form-label small fw-semibold">Delivery Date</label>
+          <input type="date" id="eb-delivery" class="form-control"></div>
+        <div class="col-md-4"><label class="form-label small fw-semibold">Capacity (L)</label>
+          <input type="number" id="eb-cap" class="form-control"></div>
+        <div class="col-md-4"><label class="form-label small fw-semibold">Payment (₹)</label>
+          <input type="number" id="eb-pay" class="form-control" step="0.01"></div>
+        <div class="col-md-4"><label class="form-label small fw-semibold">Tip (₹)</label>
+          <input type="number" id="eb-tip" class="form-control"></div>
+        <div class="col-md-4"><label class="form-label small fw-semibold">Status</label>
+          <select id="eb-status" class="form-select">
+            <option>Booked</option><option>Delivered</option><option>Cancelled</option></select></div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold"><i class="bi bi-gauge text-warning me-1"></i>Start Reading</label>
+          <input type="number" id="eb-meter-start" class="form-control" placeholder="e.g. 1983451">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold"><i class="bi bi-gauge-fill text-success me-1"></i>End Reading</label>
+          <input type="number" id="eb-meter-end" class="form-control" placeholder="e.g. 1984200">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="saveEditBooking()"><i class="bi bi-save me-1"></i>Save</button>
+      <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+    </div>
+  </div></div>
+</div>
+
+<!-- Edit Resident Modal -->
+<div class="modal fade" id="editResidentModal" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title"><i class="bi bi-person-gear me-2"></i>Edit Resident</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <input type="hidden" id="er-id">
+      <div class="mb-3"><label class="form-label small fw-semibold">Full Name</label>
+        <input type="text" id="er-name" class="form-control"></div>
+      <div class="mb-3"><label class="form-label small fw-semibold">CMC No.</label>
+        <input type="text" id="er-cmc" class="form-control"></div>
+      <div class="mb-3"><label class="form-label small fw-semibold">Mobile</label>
+        <input type="text" id="er-mobile" class="form-control"></div>
+      <div class="mb-3"><label class="form-label small fw-semibold">Registered Name (Metro Water Dept)</label>
+        <input type="text" id="er-nick" class="form-control" placeholder="Name on Metro Water booking account"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="saveEditResident()"><i class="bi bi-save me-1"></i>Save</button>
+      <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+    </div>
+  </div></div>
+</div>
+
+<!-- Quick Pay Modal -->
+<div class="modal fade" id="quickPayModal" tabindex="-1">
+  <div class="modal-dialog modal-sm"><div class="modal-content">
+    <div class="modal-header text-white" id="qp-header">
+      <h5 class="modal-title" id="qp-title"><i class="bi bi-cash-coin me-2"></i>Record Payment</h5>
+      <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body">
+      <p class="fw-semibold text-primary mb-1" id="qp-name">—</p>
+      <p class="small text-muted mb-3" id="qp-balance-label">—</p>
+      <input type="hidden" id="qp-resident-id">
+      <input type="hidden" id="qp-mode" value="payment">
+      <div class="mb-3">
+        <label class="form-label small fw-semibold" id="qp-amt-label">Amount Received (₹) *</label>
+        <input type="number" id="qp-amt" class="form-control form-control-lg" step="1" min="1" placeholder="0">
+      </div>
+      <div class="mb-3">
+        <label class="form-label small fw-semibold">Date</label>
+        <input type="date" id="qp-date" class="form-control">
+      </div>
+      <div class="mb-3">
+        <label class="form-label small fw-semibold">Notes</label>
+        <input type="text" id="qp-notes" class="form-control" placeholder="UPI, Cash, Cheque...">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn w-100 py-2" id="qp-save-btn" onclick="saveQuickPay()"><i class="bi bi-check-lg me-1"></i>Save</button>
+    </div>
+  </div></div>
+</div>
+
+<!-- WhatsApp Modal -->
+<div class="modal fade" id="whatsappModal" tabindex="-1">
+  <div class="modal-dialog modal-lg"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title"><i class="bi bi-whatsapp me-2 text-success"></i>WhatsApp Statement</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <p class="text-muted small mb-2">Copy the text below and paste into your WhatsApp group:</p>
+      <pre id="whatsapp-pre"></pre>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-success" onclick="copyWhatsApp()"><i class="bi bi-clipboard me-1"></i>Copy to Clipboard</button>
+      <button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+    </div>
+  </div></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
+<script>
+// ================================================================
+// DATA LAYER  — File System Access API (survives "Clear browsing data")
+// ================================================================
+let DB = { residents:[], bookings:[], expenses:[], payments:[], readings:[], meterlog:[], consOverrides:[], closingBalOverrides:[] };
+// ================================================================
+// DATA LAYER — Firebase Firestore (cloud storage, works on any device)
+// ================================================================
+const _FB_CONFIG = {
+  apiKey:            "AIzaSyDhpqS_o0HmYRlagFztEcCBnDGG2j6y8O4",
+  authDomain:        "metro-water-blockb.firebaseapp.com",
+  projectId:         "metro-water-blockb",
+  storageBucket:     "metro-water-blockb.firebasestorage.app",
+  messagingSenderId: "752504646096",
+  appId:             "1:752504646096:web:f8040c8d89d659b882f1d5",
+  measurementId:     "G-8EMFETSEPP"
+};
+const _FB_DOC_PATH = { collection: 'metro-water', doc: 'blockb' };
+
+let _fbApp = null;
+let _fbDb  = null;
+let _saveTimer = null;
+
+function _fbInit(){
+  if(_fbApp) return;
+  _fbApp = firebase.initializeApp(_FB_CONFIG);
+  _fbDb  = firebase.firestore(_fbApp);
+}
+
+// Debounced cloud save — batches rapid changes into one write
+function scheduleSave(){
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(_fbSave, 800);
+}
+
+async function _fbSave(){
+  if(!_fbDb) return;
+  try{
+    await _fbDb.collection(_FB_DOC_PATH.collection).doc(_FB_DOC_PATH.doc).set(DB);
+    _fbSetStatus('✓ Saved', '#4caf50');
+    setTimeout(()=>_fbSetStatus('Cloud sync on', '#aaa'), 2000);
+  } catch(e){
+    console.error('Cloud save failed:', e);
+    _fbSetStatus('⚠ Save failed', '#e53935');
+  }
+}
+
+async function _fbLoad(){
+  const snap = await _fbDb.collection(_FB_DOC_PATH.collection).doc(_FB_DOC_PATH.doc).get();
+  if(snap.exists){
+    const parsed = snap.data();
+    ['residents','bookings','expenses','payments','readings','meterlog',
+     'consOverrides','closingBalOverrides','closedMonths','openMonths'].forEach(k=>{
+      if(Array.isArray(parsed[k])) DB[k] = parsed[k];
+    });
+    if(!Array.isArray(DB.closedMonths)) DB.closedMonths=[];
+    if(!Array.isArray(DB.openMonths))   DB.openMonths=[];
+    Object.keys(parsed).filter(k=>k.startsWith('_')).forEach(k=>DB[k]=parsed[k]);
+  }
+  // If doc doesn't exist yet, seedData() will create initial data on first save
+}
+
+function _fbSetStatus(text, color){
+  const el = document.getElementById('fb-status-text');
+  if(el){ el.textContent = text; el.style.color = color||''; }
+}
+function _fbShowError(msg){
+  const err = document.getElementById('fb-error-msg');
+  const spin = document.getElementById('fb-spinner');
+  const retry = document.getElementById('fb-retry-btn');
+  const loading = document.getElementById('fb-loading-msg');
+  if(err){ err.textContent = msg; err.style.display='block'; }
+  if(spin) spin.style.display='none';
+  if(retry) retry.style.display='inline-block';
+  if(loading) loading.style.display='none';
+}
+function _fbHideOverlay(){
+  const o = document.getElementById('fb-loading-overlay');
+  if(o) o.style.display='none';
+}
+
+const S = {
+  get:    k => JSON.parse(JSON.stringify(DB[k] || [])),
+  set:    (k,v) => { DB[k]=v; scheduleSave(); },
+  add:    (k,item) => { const d=S.get(k); item.id=genId(); d.push(item); S.set(k,d); return item; },
+  update: (k,id,upd) => { S.set(k, S.get(k).map(x=>x.id===id?{...x,...upd}:x)); },
+  del:    (k,id) => { S.set(k, S.get(k).filter(x=>x.id!==id)); }
+};
+const genId = ()=>Date.now().toString(36)+Math.random().toString(36).substr(2);
+let currentMonth = '';
+
+// ── Month-close helpers ──────────────────────────────────────────
+function isMonthClosed(my){
+  return (DB.closedMonths||[]).some(c=>c.monthYear===my);
+}
+function getLastClosedMonth(){
+  const closed=(DB.closedMonths||[]).map(c=>c.monthYear).sort();
+  return closed[closed.length-1]||null;
+}
+
+// ================================================================
+// PRE-SEED DATA
+// ================================================================
+function seedData() {
+  if (DB._init_v4) return;  // already seeded — data loaded from file
+
+  // Residents only — all other data to be entered fresh
+  S.set('residents', [
+    {id:'r1', name:'Janardhanan',            cmc:'08/095/07822/000', mobile:'7845932367', nickname:'Jana'},
+    {id:'r2', name:'Shobha',                 cmc:'08/095/07825/000', mobile:'9840835825', nickname:'Shobha'},
+    {id:'r3', name:'Prem',                   cmc:'08/095/07831/000', mobile:'9940656713', nickname:'Prem'},
+    {id:'r4', name:'Thiruselvan (Sreenath)', cmc:'08/095/07846/000', mobile:'9444211213', nickname:'Thiru'},
+    {id:'r5', name:'Saravanan (Hari)',        cmc:'08/095/07826/000', mobile:'9677057884', nickname:'Radha'},
+    {id:'r6', name:'Velu',                   cmc:'08/095/07847/000', mobile:'9940258884', nickname:'Velu'},
+    {id:'r7', name:'Suresh',                 cmc:'08/095/07817/000', mobile:'9962144886', nickname:'Suresh'},
+  ]);
+
+  S.set('bookings',     []);
+  S.set('meterlog',     []);
+  S.set('readings',     []);
+  S.set('payments',     []);
+  S.set('expenses',     []);
+  S.set('consOverrides',      []);
+  S.set('closingBalOverrides',[]);
+
+  DB._init_v4 = '1';
+  scheduleSave();
+}
+
+// ================================================================
+// COMMON METER CALCULATIONS
+// ================================================================
+
+// Returns sorted meter log (all entries across all months)
+function getSortedMeterLog() {
+  return S.get('meterlog').filter(l=>l.reading).sort((a,b)=>
+    a.date!==b.date ? a.date.localeCompare(b.date) : a.reading - b.reading
+  );
+}
+
+// Returns {bookingId -> actualVolume} for all bookings that have a next reading
+function calcActualVolumes() {
+  const log = getSortedMeterLog();
+  const vols = {};
+  for (let i = 0; i < log.length; i++) {
+    if (!log[i].bookingId) continue;
+    const start = log[i].startReading || log[i].reading;
+    if (log[i].endReading) {
+      // End reading stored directly on this entry — use it
+      const vol = log[i].endReading - start;
+      if (vol > 0) vols[log[i].bookingId] = vol;
+    } else if (i < log.length - 1) {
+      // Fall back to next entry's reading (old behaviour)
+      const vol = log[i+1].reading - start;
+      if (vol > 0) vols[log[i].bookingId] = vol;
+    }
+  }
+  return vols;
+}
+
+// Get the last meter log entry overall
+function getLastMeterEntry() {
+  const log = getSortedMeterLog();
+  return log.length ? log[log.length-1] : null;
+}
+
+// ================================================================
+// CALCULATIONS
+// ================================================================
+function getMonths() {
+  const all = [...new Set([
+    ...S.get('bookings').map(x=>x.monthYear),
+    ...S.get('expenses').map(x=>x.monthYear),
+    ...S.get('readings').map(x=>x.monthYear),
+    ...S.get('payments').map(x=>x.monthYear),
+    ...(DB.closedMonths||[]).map(c=>c.monthYear),
+    ...(DB.openMonths||[]),
+  ])];
+  const cur = new Date().toISOString().slice(0,7);
+  if(!all.includes(cur)) all.push(cur);
+  return [...new Set(all)].sort();
+}
+
+function bookingSummary(my) {
+  const bs = S.get('bookings').filter(b=>b.monthYear===my);
+  const vols = calcActualVolumes();
+  return {
+    count: bs.length,
+    totalCapacity: bs.reduce((s,b)=>s+(b.capacity||0),0),
+    totalVolume: bs.reduce((s,b)=>s+(vols[b.id]||0),0),
+    totalAmount: bs.reduce((s,b)=>s+(b.paymentAmount||0)+(b.tipAmount||0),0),
+    pendingCount: bs.filter(b=>!vols[b.id]).length
+  };
+}
+
+function expenseTotal(my) {
+  return S.get('expenses').filter(e=>e.monthYear===my).reduce((s,e)=>s+e.amount,0);
+}
+
+function computeStatement(my) {
+  const residents = S.get('residents');
+  const bookings  = S.get('bookings').filter(b=>b.monthYear===my);
+  const expenses  = S.get('expenses').filter(e=>e.monthYear===my);
+  const payments  = S.get('payments').filter(p=>p.monthYear===my);
+
+  const totalWater = bookings.reduce((s,b)=>s+(b.paymentAmount||0)+(b.tipAmount||0),0);
+  const totalOther = expenses.reduce((s,e)=>s+e.amount,0);
+  const perFlatOther = totalOther/7;
+
+  // Reading for 1st of 'my' = period start; reading for 1st of next month = period end
+  const nxtMY = nextMonthStr(my);
+  const curRdMap={}, nxtRdMap={};
+  S.get('readings').filter(r=>r.monthYear===my).forEach(r=>curRdMap[r.residentId]=r.reading);
+  S.get('readings').filter(r=>r.monthYear===nxtMY).forEach(r=>nxtRdMap[r.residentId]=r.reading);
+
+  // Consumption overrides: manually set consumption for a resident+month
+  const overridesThisMonth = (S.get('consOverrides')||[]).filter(o=>o.monthYear===my);
+  const getConsOverride = rid => overridesThisMonth.find(o=>o.residentId===rid);
+
+  const totalCons = residents.reduce((s,r)=>{
+    const ov = getConsOverride(r.id);
+    if(ov) return s + ov.consumption;
+    const start=curRdMap[r.id]??null, end=nxtRdMap[r.id]??null;
+    if(start==null||end==null) return s;
+    return s+Math.max(0,end-start);
+  },0);
+
+  const prevBals = computePrevBalances(my, residents);
+
+  const rows = residents.map(r=>{
+    const ov = getConsOverride(r.id);
+    const start=curRdMap[r.id]??null, end=nxtRdMap[r.id]??null;
+    const cons = ov ? ov.consumption : (start!=null&&end!=null)?Math.max(0,end-start):0;
+    const pct=totalCons>0?cons/totalCons:0;
+    const waterCharge=Math.round(pct*totalWater*100)/100;
+    const bookingsPaid=bookings.filter(b=>(b.paidBy||b.bookedBy)===r.id).reduce((s,b)=>s+(b.paymentAmount||0)+(b.tipAmount||0),0);
+    const directPaid=payments.filter(p=>p.residentId===r.id).reduce((s,p)=>s+p.amount,0);
+    const paid=bookingsPaid+directPaid;
+    const prevBal=prevBals[r.id]||0;
+    const grossDue=Math.round(waterCharge+perFlatOther+prevBal);
+    const balance=Math.round(grossDue-paid);
+    return {residentId:r.id,name:r.name,startReading:start,endReading:end,
+            consumption:cons,consOverridden:!!ov,pct,waterCharge,otherExpenses:Math.round(perFlatOther*100)/100,
+            prevBalance:Math.round(prevBal*100)/100,
+            bookingsPaid:Math.round(bookingsPaid*100)/100,
+            directPaid:Math.round(directPaid*100)/100,
+            paidThisMonth:Math.round(paid*100)/100,
+            grossDue,balance};
+  });
+
+  return {rows,totalWater,totalOther,perFlatOther,totalCons};
+}
+
+function computePrevBalances(my, residents) {
+  const allMonths=[...new Set([
+    ...S.get('bookings').map(b=>b.monthYear),
+    ...S.get('expenses').map(e=>e.monthYear),
+    ...S.get('readings').map(r=>r.monthYear),
+    ...S.get('payments').map(p=>p.monthYear)   // include adjustment/opening-balance months
+  ])].filter(m=>m<my).sort();
+
+  const bals={};
+  residents.forEach(r=>bals[r.id]=0);
+
+  for(const m of allMonths){
+    const bs=S.get('bookings').filter(b=>b.monthYear===m);
+    const es=S.get('expenses').filter(e=>e.monthYear===m);
+    const ps=S.get('payments').filter(p=>p.monthYear===m);
+    const tw=bs.reduce((s,b)=>s+(b.paymentAmount||0)+(b.tipAmount||0),0);
+    const to=es.reduce((s,e)=>s+e.amount,0);
+    const pfo=to/7;
+    // Reading for 1st of m = period start; reading for 1st of next month = period end
+    const nm=nextMonthStr(m);
+    const curMap={}, nxtMap={};
+    S.get('readings').filter(r=>r.monthYear===m).forEach(r=>curMap[r.residentId]=r.reading);
+    S.get('readings').filter(r=>r.monthYear===nm).forEach(r=>nxtMap[r.residentId]=r.reading);
+    const ovMap={};
+    (S.get('consOverrides')||[]).filter(o=>o.monthYear===m).forEach(o=>ovMap[o.residentId]=o.consumption);
+    const tc=residents.reduce((s,r)=>{
+      if(ovMap[r.id]!=null) return s+ovMap[r.id];
+      const start=curMap[r.id]??null, end=nxtMap[r.id]??null;
+      if(start==null||end==null) return s;
+      return s+Math.max(0,end-start);
+    },0);
+    residents.forEach(r=>{
+      const start=curMap[r.id]??null, end=nxtMap[r.id]??null;
+      const cons = ovMap[r.id]!=null ? ovMap[r.id] : (start!=null&&end!=null)?Math.max(0,end-start):0;
+      const pct=tc>0?cons/tc:0;
+      const wc=Math.round(pct*tw*100)/100;
+      // Round grossDue identically to computeStatement (nearest ₹1, including running balance)
+      const grossDue=Math.round(wc+pfo+bals[r.id]);
+      const bookingsPaid=bs.filter(b=>(b.paidBy||b.bookedBy)===r.id).reduce((s,b)=>s+(b.paymentAmount||0)+(b.tipAmount||0),0);
+      const paid=ps.filter(p=>p.residentId===r.id).reduce((s,p)=>s+p.amount,0)+bookingsPaid;
+      bals[r.id]=grossDue-paid; // SET rolling balance, not +=
+    });
+    // After computing this month's closing balance, apply any overrides.
+    // A closingBalOverride for month m replaces the computed closing balance,
+    // effectively controlling what the next month sees as its opening prevBalance.
+    const cbOv = (S.get('closingBalOverrides')||[]).filter(o=>o.monthYear===m);
+    cbOv.forEach(o=>{ bals[o.residentId]=o.closingBalance; });
+  }
+  return bals;
+}
+
+// ================================================================
+// HELPERS
+// ================================================================
+function fmt(n,dec=0){ return n==null||n===''?'—':Number(n).toLocaleString('en-IN',{minimumFractionDigits:dec,maximumFractionDigits:dec}); }
+function fmtMoney(n){ return n==null?'—':'₹'+fmt(n,2); }
+function monthLabel(my){
+  try{ const d=new Date(my+'-01'); return d.toLocaleString('en-IN',{month:'long',year:'numeric'}); }
+  catch{ return my; }
+}
+function residentName(id){ return (S.get('residents').find(r=>r.id===id)||{}).name||'—'; }
+function findResidentIdByName(name){ return (S.get('residents').find(r=>r.name.toLowerCase()===name.toLowerCase())||{}).id||null; }
+function today(){ return new Date().toISOString().slice(0,10); }
+function nextMonthStr(my){ const d=new Date(my+'-01'); d.setMonth(d.getMonth()+1); return d.toISOString().slice(0,7); }
+function prevMonthStr(my){ const d=new Date(my+'-01'); d.setMonth(d.getMonth()-1); return d.toISOString().slice(0,7); }
+function showAlert(msg,type='success'){
+  const box=document.getElementById('alertBox');
+  box.innerHTML=`<div class="alert alert-${type} alert-dismissible fade show">${msg}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>`;
+  setTimeout(()=>{ try{bootstrap.Alert.getOrCreateInstance(box.querySelector('.alert')).close()}catch{} },3000);
+}
+
+// ================================================================
+// TAB NAVIGATION
+// ================================================================
+let activeTab='dashboard';
+function showTab(tab){
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.getElementById('tab-'+tab).classList.add('active');
+  document.querySelectorAll('#mainNav .nav-link').forEach(l=>l.classList.remove('active'));
+  const idx={dashboard:0,bookings:1,expenses:2,readings:3,statement:4,residents:5}[tab];
+  document.querySelectorAll('#mainNav .nav-link')[idx]?.classList.add('active');
+  activeTab=tab;
+  // Hide month bar on dashboard (it is not used there)
+  const mb=document.querySelector('.month-bar');
+  if(mb) mb.style.display=tab==='dashboard'?'none':'';
+  renderTab(tab);
+  const nav=document.getElementById('navMenu');
+  if(nav.classList.contains('show')) bootstrap.Collapse.getOrCreateInstance(nav).hide();
+}
+function renderTab(tab){
+  switch(tab){
+    case 'dashboard': renderDashboard(); break;
+    case 'bookings':  renderBookings();  break;
+    case 'expenses':  renderExpenses();  break;
+    case 'readings':  renderReadings();  break;
+    case 'statement': renderStatement(); break;
+    case 'residents': renderResidents(); break;
+  }
+}
+
+// ================================================================
+// MONTH SELECTOR
+// ================================================================
+function rebuildMonthSelect(){
+  const sel=document.getElementById('monthSelect');
+  // Only show Jan 2026 onwards — 2025 data exists only as migrated history
+  const months=getMonths().filter(m=>m>='2026-01');
+  const cur=currentMonth||months[months.length-1];
+  sel.innerHTML=months.map(m=>{
+    const locked=isMonthClosed(m);
+    return `<option value="${m}"${m===cur?' selected':''}>${locked?'🔒 ':''}${monthLabel(m)}</option>`;
+  }).join('');
+  if(!months.includes(currentMonth)) currentMonth=months[months.length-1];
+}
+function onMonthChange(){
+  currentMonth=document.getElementById('monthSelect').value;
+  updateMonthBar();
+  renderTab(activeTab);
+}
+function updateMonthBar(){
+  const badge=document.getElementById('month-closed-badge');
+  if(badge) badge.className=isMonthClosed(currentMonth)?'badge bg-success ms-1':'d-none badge bg-success ms-1';
+}
+function promptNewMonth(){
+  // Suggest the month after the latest known month
+  const months=getMonths();
+  const latest=months[months.length-1]||new Date().toISOString().slice(0,7);
+  const suggested=nextMonthStr(latest);
+  const val=prompt('Enter month (YYYY-MM format):',suggested);
+  if(!val||!/^\d{4}-\d{2}$/.test(val)) return;
+  // Persist so getMonths() keeps it even before any data is entered
+  if(!Array.isArray(DB.openMonths)) DB.openMonths=[];
+  if(!DB.openMonths.includes(val)) { DB.openMonths.push(val); scheduleSave(); }
+  currentMonth=val;
+  rebuildMonthSelect();
+  renderTab(activeTab);
+}
+
+// ================================================================
+// DASHBOARD — Consumption Trend Chart
+// ================================================================
+let _dashChart      = null;
+let _dashPreset     = '3m';
+let _dashInitDone   = false;
+let _dashExcluded   = new Set(); // resident IDs hidden via chip toggles
+const _DASH_COLORS  = ['#1a6fc4','#e83e3e','#2ca02c','#ff7f0e','#9467bd','#8c564b','#17becf'];
+let   _dashAnomalyLabels = new Set();
+
+// Combined inline plugin: gradient fills + anomaly vertical-line annotations
+const _dashPlugin = {
+  id: 'metroDashPlugin',
+  // Build gradient fills after layout so chartArea coordinates are final.
+  // afterUpdate runs after scales + layout are computed but before the first draw,
+  // so Chart.js's filler plugin picks up the gradient on the very first render.
+  afterUpdate(chart) {
+    if (!chart.chartArea) return;
+    const { top, bottom } = chart.chartArea;
+    chart.data.datasets.forEach(ds => {
+      if (!ds.borderColor) return;
+      const grad = chart.ctx.createLinearGradient(0, top, 0, bottom);
+      grad.addColorStop(0, ds.borderColor + '55'); // ~33 % opacity at top
+      grad.addColorStop(0.6, ds.borderColor + '18'); // gentle mid fade
+      grad.addColorStop(1, ds.borderColor + '00'); // fully transparent at bottom
+      ds.backgroundColor = grad;
+    });
+  },
+  // Draw amber dashed vertical lines for anomaly / override months
+  afterDraw(chart) {
+    const { ctx, chartArea, scales } = chart;
+    if (!chartArea || !_dashAnomalyLabels.size) return;
+    _dashAnomalyLabels.forEach(lbl => {
+      const idx = chart.data.labels.indexOf(lbl);
+      if (idx < 0) return;
+      const x = scales.x.getPixelForValue(idx);
+      ctx.save();
+      ctx.setLineDash([4, 3]);
+      ctx.strokeStyle = 'rgba(210,130,0,0.75)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x, chartArea.top);
+      ctx.lineTo(x, chartArea.bottom);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      const txt = '✎ avg';
+      ctx.font = 'bold 9px system-ui,sans-serif';
+      const tw = ctx.measureText(txt).width + 10;
+      const bx = x + 3, by = chartArea.top + 4, bh = 16;
+      ctx.fillStyle = 'rgba(210,130,0,0.9)';
+      ctx.fillRect(bx, by, tw, bh);
+      ctx.fillStyle = '#fff';
+      ctx.fillText(txt, bx + 5, by + 11);
+      ctx.restore();
+    });
+  }
+};
+
+
+function _dashFmt(m){
+  try{
+    const d=new Date(m+'-01');
+    const mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
+    return mo+'-'+String(d.getFullYear()).slice(-2);
+  }catch{ return m; }
+}
+
+function _dashBuildRdMap(){
+  const map={};
+  S.get('readings').forEach(r=>{
+    if(!map[r.residentId]) map[r.residentId]={};
+    map[r.residentId][r.monthYear]=r.reading;
+  });
+  return map;
+}
+
+function _dashConsMonths(rdMap){
+  // Months where at least one resident has readings for M and M+1 (so consumption can be calculated)
+  const res=S.get('residents');
+  return getMonths().filter(m=>{
+    const nx=nextMonthStr(m);
+    return res.some(r=>rdMap[r.id]?.[m]!=null && rdMap[r.id]?.[nx]!=null);
+  });
+}
+
+function _dashFilterMonths(allCons){
+  if(!allCons.length) return [];
+  const now=new Date(), cy=now.getFullYear(), cm=now.getMonth()+1;
+  if(_dashPreset==='3m'){
+    const cut=new Date(cy,cm-4,1);
+    return allCons.filter(m=>{ const [y,mo]=m.split('-').map(Number); return new Date(y,mo-1,1)>=cut; });
+  }
+  if(_dashPreset==='6m'){
+    const cut=new Date(cy,cm-7,1);
+    return allCons.filter(m=>{ const [y,mo]=m.split('-').map(Number); return new Date(y,mo-1,1)>=cut; });
+  }
+  if(_dashPreset==='year') return allCons.filter(m=>m.startsWith(cy+'-'));
+  const from=document.getElementById('dash-from')?.value;
+  const to  =document.getElementById('dash-to')?.value;
+  if(!from||!to) return allCons;
+  if(to<from) return [];   // invalid range — handled in dashRender
+  return allCons.filter(m=>m>=from&&m<=to);
+}
+
+function _dashBadgeText(months){
+  if(!months.length) return 'No data';
+  if(_dashPreset==='3m') return 'Last 3 Months';
+  if(_dashPreset==='6m') return 'Last 6 Months';
+  if(_dashPreset==='year') return 'This Year';
+  const from=document.getElementById('dash-from')?.value;
+  const to  =document.getElementById('dash-to')?.value;
+  return monthLabel(from)+' – '+monthLabel(to);
+}
+
+function _dashSelectedIds(){
+  return S.get('residents').map(r=>r.id).filter(id=>!_dashExcluded.has(id));
+}
+
+function dashRender(){
+  const residents=S.get('residents');
+  const rdMap=_dashBuildRdMap();
+  const allCons=_dashConsMonths(rdMap);
+
+  // Validate custom range
+  const errEl=document.getElementById('dash-range-err');
+  if(_dashPreset==='custom'){
+    const from=document.getElementById('dash-from')?.value;
+    const to  =document.getElementById('dash-to')?.value;
+    if(from&&to&&to<from){
+      if(errEl) errEl.style.display='block';
+      if(document.getElementById('dash-chart')) document.getElementById('dash-chart').style.display='none';
+      if(document.getElementById('dash-no-data')) document.getElementById('dash-no-data').style.display='none';
+      return;
+    }
+  }
+  if(errEl) errEl.style.display='none';
+
+  const months=_dashFilterMonths(allCons);
+  const selIds=_dashSelectedIds();
+
+  const badge=document.getElementById('dash-range-badge');
+  if(badge) badge.textContent=_dashBadgeText(months);
+
+  const canvas=document.getElementById('dash-chart');
+  const noData=document.getElementById('dash-no-data');
+  const hasData=months.length>0&&selIds.length>0;
+
+  if(!hasData){
+    if(_dashChart){ _dashChart.destroy(); _dashChart=null; }
+    if(canvas) canvas.style.display='none';
+    if(noData) noData.style.display='block';
+    _dashRenderChips([], []);
+    return;
+  }
+  if(canvas) canvas.style.display='block';
+  if(noData) noData.style.display='none';
+
+  const labels=months.map(_dashFmt);
+
+  // Compute anomaly labels — months where a consumption override is active for any visible resident
+  const allOvs=S.get('consOverrides')||[];
+  _dashAnomalyLabels=new Set(
+    months.filter(m=>allOvs.some(o=>o.monthYear===m&&selIds.includes(o.residentId))).map(_dashFmt)
+  );
+
+  const datasets=selIds.map(rid=>{
+    const res=residents.find(r=>r.id===rid);
+    const ci=residents.findIndex(r=>r.id===rid);
+    const color=_DASH_COLORS[ci%_DASH_COLORS.length];
+    const data=months.map(m=>{
+      const start=rdMap[rid]?.[m];
+      const end  =rdMap[rid]?.[nextMonthStr(m)];
+      return (start!=null&&end!=null)?Math.max(0,end-start):null;
+    });
+    return {
+      label: res?.nickname||res?.name||rid,
+      data, borderColor:color, backgroundColor:'transparent',
+      borderWidth:2.5, tension:0.35, fill:true, spanGaps:true,
+      pointRadius:4, pointHoverRadius:8,
+      pointBackgroundColor:color, pointBorderColor:'#fff', pointBorderWidth:2
+    };
+  });
+
+  // Render pill-badge legend chips (above canvas, replaces Chart.js built-in legend)
+  _dashRenderChips(datasets, selIds);
+
+  if(!_dashChart){
+    _dashChart=new Chart(canvas,{
+      type:'line',
+      data:{labels,datasets},
+      plugins:[_dashPlugin],
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        interaction:{mode:'index',intersect:false},
+        plugins:{
+          title:{
+            display:true,
+            text:'Water Consumption (Litres)',
+            font:{size:15,weight:'normal'},
+            color:'#333',
+            padding:{bottom:12}
+          },
+          legend:{ display:false },
+          tooltip:{
+            backgroundColor:'rgba(30,30,30,0.85)',
+            titleFont:{size:12}, bodyFont:{size:12}, padding:10,
+            callbacks:{label:ctx=>{
+              const v=ctx.parsed.y;
+              return ` ${ctx.dataset.label}: ${v!=null?Number(v).toLocaleString('en-IN')+' L':'No data'}`;
+            }}
+          }
+        },
+        scales:{
+          x:{
+            grid:{display:false},
+            ticks:{font:{size:12},color:'#666'}
+          },
+          y:{
+            beginAtZero:true,
+            grid:{color:'rgba(0,0,0,0.05)'},
+            border:{dash:[4,4]},
+            ticks:{
+              font:{size:11},color:'#666',
+              callback:v=>Number(v).toLocaleString('en-IN')
+            }
+          }
+        }
+      }
+    });
+  } else {
+    _dashChart.data.labels=labels;
+    _dashChart.data.datasets=datasets;
+    _dashChart.update('active');
+  }
+
+}
+
+// Render pill-chip legend — each chip reflects _dashExcluded state and is clickable
+function _dashRenderChips(datasets, selIds){
+  const el=document.getElementById('dash-legend-chips');
+  if(!el) return;
+  // Build chips for ALL residents so excluded ones also appear (dimmed)
+  const residents=S.get('residents');
+  el.innerHTML=residents.map((r,i)=>{
+    const color=_DASH_COLORS[i%_DASH_COLORS.length];
+    const excluded=_dashExcluded.has(r.id);
+    return `<span onclick="dashToggleResident('${r.id}')"
+      style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;
+             padding:3px 11px;border-radius:20px;font-size:.78rem;font-weight:600;
+             border:1.5px solid ${color};color:${color};
+             background:${color}18;transition:opacity .2s;user-select:none;
+             opacity:${excluded?'0.32':'1'}"
+      title="${excluded?'Click to show':'Click to hide'}">
+      <span style="width:7px;height:7px;border-radius:50%;background:${color};flex-shrink:0"></span>
+      ${r.nickname||r.name}
+    </span>`;
+  }).join('');
+  // Update toggle-all label
+  const tgl=document.getElementById('dash-toggle-all');
+  if(tgl) tgl.textContent=_dashExcluded.size>0?'Select All':'Deselect All';
+}
+
+// Toggle a resident's visibility via chip click — state persists across dashRender() calls
+function dashToggleResident(rid){
+  if(_dashExcluded.has(rid)) _dashExcluded.delete(rid);
+  else _dashExcluded.add(rid);
+  dashRender();
+}
+
+function dashToggleAll(e){
+  e.preventDefault();
+  const allIds=S.get('residents').map(r=>r.id);
+  if(_dashExcluded.size>0){ _dashExcluded.clear(); }
+  else { allIds.forEach(id=>_dashExcluded.add(id)); }
+  dashRender();
+}
+
+function renderDashboard(){
+  const residents=S.get('residents');
+  const rdMap=_dashBuildRdMap();
+  const allCons=_dashConsMonths(rdMap);
+  const allMonths=getMonths(); // all months, not just consumption months
+
+  // Wire preset button listeners once; chips handle resident visibility via _dashExcluded
+  if(!_dashInitDone){
+    document.querySelectorAll('.dash-preset').forEach(btn=>{
+      btn.addEventListener('click',function(){
+        document.querySelectorAll('.dash-preset').forEach(b=>b.classList.remove('active'));
+        this.classList.add('active');
+        _dashPreset=this.dataset.preset;
+        document.getElementById('dash-custom-range').style.display=
+          _dashPreset==='custom'?'flex':'none';
+        dashRender();
+      });
+    });
+    _dashInitDone=true;
+  }
+
+  // Refresh From/To dropdowns every render (picks up new months, preserves selection)
+  const fromSel=document.getElementById('dash-from');
+  const toSel  =document.getElementById('dash-to');
+  if(fromSel&&toSel&&allMonths.length){
+    const prevFrom=fromSel.value, prevTo=toSel.value;
+    const opts=allMonths.map(m=>`<option value="${m}">${monthLabel(m)}</option>`).join('');
+    fromSel.innerHTML=opts; toSel.innerHTML=opts;
+    // Restore previous selection if still valid, else default: from=first, to=last
+    fromSel.value=allMonths.includes(prevFrom)?prevFrom:allMonths[0];
+    toSel.value  =allMonths.includes(prevTo)  ?prevTo  :allMonths[allMonths.length-1];
+  }
+
+  dashRender();
+}
+
+// ================================================================
+// COMMON METER LOG
+// ================================================================
+function getMeterReadingForBooking(bookingId){
+  const entry=S.get('meterlog').find(l=>l.bookingId===bookingId);
+  return entry?entry.reading:null;
+}
+
+function addMeterReading(){
+  const date=document.getElementById('mr-date').value;
+  const reading=parseInt(document.getElementById('mr-reading').value);
+  const note=document.getElementById('mr-note').value.trim();
+  const bookingId=document.getElementById('mr-booking').value||null;
+
+  if(!date||!reading){ showAlert('Please enter date and reading.','danger'); return; }
+
+  // Check not duplicate
+  const existing=S.get('meterlog').find(l=>l.date===date&&l.reading===reading);
+  if(existing){ showAlert('This reading already exists.','warning'); return; }
+
+  S.add('meterlog',{date,reading,note,bookingId});
+
+  // Reset form
+  document.getElementById('mr-reading').value='';
+  document.getElementById('mr-note').value='';
+  document.getElementById('mr-booking').value='';
+  document.getElementById('mr-date').value=today();
+
+  showAlert('Meter reading recorded! Actual volumes updated automatically.');
+  renderBookings();
+}
+
+function deleteMeterEntry(id){
+  if(!confirm('Delete this meter reading? This will affect actual volume calculations.')) return;
+  S.del('meterlog',id);
+  showAlert('Meter reading deleted.','info');
+  renderBookings();
+}
+
+function renderMeterLog(my){
+  const log=getSortedMeterLog();
+  const vols=calcActualVolumes();
+  // Show all entries (they're not month-specific — cross-month is the point)
+  // But highlight entries relevant to this month's bookings
+  const myBookingIds=new Set(S.get('bookings').filter(b=>b.monthYear===my).map(b=>b.id));
+
+  // Show last 15 entries
+  const recent=log.slice(-15).reverse();
+  if(!recent.length){
+    document.getElementById('meter-log-table').innerHTML='<p class="text-muted small mb-0">No meter readings recorded yet.</p>';
+    return;
+  }
+
+  // Update last meter display
+  const last=log[log.length-1];
+  document.getElementById('last-meter-reading').textContent=fmt(last.reading);
+  document.getElementById('last-meter-date').textContent='on '+last.date;
+
+  document.getElementById('meter-log-table').innerHTML=`
+    <p class="text-muted small mb-2 fw-semibold">Recent Readings (newest first):</p>
+    <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+      <thead><tr><th>Date</th><th>Start Reading</th><th>End Reading</th><th>Linked Booking</th><th>Actual Vol Delivered</th><th>Note</th><th></th></tr></thead>
+      <tbody>${recent.map(l=>{
+        const bk=l.bookingId?S.get('bookings').find(b=>b.id===l.bookingId):null;
+        const vol=l.bookingId?vols[l.bookingId]:null;
+        const isMy=l.bookingId&&myBookingIds.has(l.bookingId);
+        const startVal = l.startReading || l.reading;
+        const endVal   = l.endReading || null;
+        return `<tr${isMy?' class="table-info"':''}>
+          <td>${l.date}</td>
+          <td class="fw-semibold">${fmt(startVal)}</td>
+          <td class="fw-semibold">${endVal ? fmt(endVal) : '<span class="text-muted small">—</span>'}</td>
+          <td>${bk?`<small>${bk.bookingDate} (${residentName(bk.bookedBy)})</small>`:'<span class="text-muted small">Standalone</span>'}</td>
+          <td>${vol?`<span class="badge badge-calculated">${fmt(vol)} L</span>`:'<span class="badge badge-pending">Pending next reading</span>'}</td>
+          <td class="text-muted small">${l.note||'—'}</td>
+          <td><button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="deleteMeterEntry('${l.id}')"><i class="bi bi-trash"></i></button></td>
+        </tr>`;
+      }).join('')}
+      </tbody>
+    </table></div>`;
+}
+
+// ================================================================
+// BOOKINGS
+// ================================================================
+function populateResidentSelects(){
+  const res=S.get('residents');
+  const opts='<option value="">— Select —</option>'+res.map(r=>`<option value="${r.id}">${r.name}</option>`).join('');
+  ['b-by','b-paid-by','eb-by','eb-paid-by'].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=opts; });
+
+  // Also populate booking link select in meter log form
+  const bkOpts='<option value="">— Standalone / Month-end —</option>'+
+    S.get('bookings').sort((a,b)=>b.bookingDate.localeCompare(a.bookingDate)).map(b=>
+      `<option value="${b.id}">${b.bookingDate} — ${residentName(b.bookedBy)} (${b.monthYear})</option>`
+    ).join('');
+  const mrbk=document.getElementById('mr-booking');
+  if(mrbk) mrbk.innerHTML=bkOpts;
+}
+
+function onSourceChange(){
+  const src=document.querySelector('input[name="b-src"]:checked')?.value||'Corp';
+  const isCorp=src==='Corp';
+  // Amount: default 828.30 for Corp, clear for Private
+  if(isCorp) document.getElementById('b-pay').value='828.30';
+  else document.getElementById('b-pay').value='';
+  // Tip: show fixed ₹100 for Corp, hide for Private
+  document.getElementById('b-tip-wrap').style.display=isCorp?'':'none';
+  if(isCorp) document.getElementById('b-tip').value='100';
+  // Volume: hide for Corp (always 9000), show for Private
+  document.getElementById('b-cap-wrap').style.display=isCorp?'none':'';
+  if(!isCorp) document.getElementById('b-cap').value='';
+}
+function onBookingDateChange(){
+  const bDate=document.getElementById('b-date').value;
+  if(bDate) document.getElementById('b-delivery').value=bDate;
+}
+function onEditSourceChange(){
+  const src=document.getElementById('eb-source').value;
+  const isCorp=src==='Corp';
+  // For Corp: fixed tip 100, capacity locked to 9000
+  if(isCorp){
+    document.getElementById('eb-tip').value='100';
+    document.getElementById('eb-cap').value='9000';
+    document.getElementById('eb-cap').readOnly=true;
+  } else {
+    // Private: no tip, manual volume
+    document.getElementById('eb-tip').value='0';
+    document.getElementById('eb-cap').readOnly=false;
+  }
+}
+
+function addBooking(e){
+  e.preventDefault();
+  const src=document.querySelector('input[name="b-src"]:checked')?.value||'Corp';
+  const isCorp=src==='Corp';
+  const bookingDate=document.getElementById('b-date').value;
+  const meterStart=document.getElementById('b-meter-start').value?parseInt(document.getElementById('b-meter-start').value):null;
+  const meterEnd=document.getElementById('b-meter-end').value?parseInt(document.getElementById('b-meter-end').value):null;
+
+  const booking=S.add('bookings',{
+    monthYear:currentMonth,
+    source:src,
+    bookingDate,
+    capacity:isCorp?9000:(parseInt(document.getElementById('b-cap').value)||0),
+    bookingNo:document.getElementById('b-no').value.trim()||null,
+    bookedBy:document.getElementById('b-by').value||null,
+    paidBy:document.getElementById('b-paid-by').value||document.getElementById('b-by').value||null,
+    deliveryDate:document.getElementById('b-delivery').value||bookingDate||null,
+    paymentAmount:parseFloat(document.getElementById('b-pay').value)||0,
+    tipAmount:isCorp?100:0,
+    status:'Booked',
+  });
+
+  // Auto-create meter log entry linked to this booking
+  if(meterStart){
+    S.add('meterlog',{date:bookingDate, reading:meterStart, startReading:meterStart, endReading:meterEnd||null, bookingId:booking.id, note:''});
+  }
+
+  // Reset fields — carry End Reading forward as next Start Reading
+  document.getElementById('b-no').value='';
+  document.getElementById('b-delivery').value='';
+  document.getElementById('b-meter-start').value=meterEnd||'';
+  document.getElementById('b-meter-end').value='';
+  document.getElementById('b-date').value=today();
+  onSourceChange(); // reset amount/tip/volume to defaults for current source
+
+  showAlert('Booking added!'+(meterStart?' Meter readings recorded. Start reading pre-filled for next booking.':''));
+  renderBookings();
+  rebuildMonthSelect();
+}
+
+function renderBookings(){
+  populateResidentSelects();
+  document.getElementById('b-date').value=today();
+  // Default Paid By to Velu — override manually when someone else pays (e.g. Prem)
+  const veluId=findResidentIdByName('Velu');
+  if(veluId) document.getElementById('b-paid-by').value=veluId;
+  onSourceChange(); // initialise tip/volume visibility and amount default
+
+  // Auto-fill Start Reading from the most recent entry's End Reading
+  const startEl=document.getElementById('b-meter-start');
+  if(startEl && !startEl.value){
+    const lastEntry=getSortedMeterLog().slice().reverse().find(l=>l.endReading);
+    if(lastEntry) startEl.value=lastEntry.endReading;
+  }
+  document.getElementById('bookings-month-label').textContent=monthLabel(currentMonth);
+
+  const bs=S.get('bookings').filter(b=>b.monthYear===currentMonth);
+  const sm=bookingSummary(currentMonth);
+  const vols=calcActualVolumes();
+
+  const bar=document.getElementById('bookings-summary-bar');
+  if(sm.count){
+    bar.style.display='';
+    bar.innerHTML=`<i class="bi bi-truck me-1"></i><strong>${sm.count}</strong> loads &bull;
+      <strong>${fmt(sm.totalVolume)}</strong> L delivered${sm.pendingCount?` <span class="badge bg-warning text-dark">${sm.pendingCount} pending next reading</span>`:''} &bull;
+      <strong>${fmtMoney(sm.totalAmount)}</strong> total`;
+  } else { bar.style.display='none'; }
+
+  document.getElementById('bookings-list').innerHTML=bs.length?`
+    <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead><tr>
+        <th>Source</th><th>Date</th><th>Booking No.</th><th>Booked By</th><th>Paid By</th>
+        <th><i class="bi bi-gauge text-warning me-1"></i>Meter Reading</th>
+        <th>Actual Vol (L)</th>
+        <th>Total (₹)</th><th>Status</th><th></th>
+      </tr></thead>
+      <tbody>${bs.map(b=>{
+        const mReading=getMeterReadingForBooking(b.id);
+        const vol=vols[b.id];
+        return `<tr>
+          <td><span class="badge ${b.source==='Corp'?'badge-corp':'badge-private'} px-2">${b.source}</span></td>
+          <td>${b.bookingDate||'—'}</td>
+          <td><code>${b.bookingNo||'—'}</code></td>
+          <td>${residentName(b.bookedBy)}</td>
+          <td>${residentName(b.paidBy||b.bookedBy)}</td>
+          <td class="text-muted">${mReading?mReading:'<span class="text-warning small">Not recorded</span>'}</td>
+          <td>${vol?`<span class="badge badge-calculated">${fmt(vol)} L</span>`:'<span class="badge badge-pending">Pending</span>'}</td>
+          <td>${fmtMoney((b.paymentAmount||0)+(b.tipAmount||0))}</td>
+          <td><span class="badge ${b.status==='Delivered'?'bg-success':b.status==='Booked'?'bg-primary':'bg-secondary'}">${b.status}</span></td>
+          <td>
+            <button class="btn btn-sm btn-outline-secondary py-0 px-2 me-1" onclick="editBooking('${b.id}')"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="deleteBooking('${b.id}')"><i class="bi bi-trash"></i></button>
+          </td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`
+    :`<div class="text-center text-muted py-5"><i class="bi bi-truck fs-1 d-block mb-2 opacity-25"></i>No bookings for ${monthLabel(currentMonth)}</div>`;
+}
+
+function editBooking(id){
+  const b=S.get('bookings').find(x=>x.id===id);
+  if(!b) return;
+  document.getElementById('eb-id').value=id;
+  document.getElementById('eb-source').value=b.source||'Corp';
+  document.getElementById('eb-date').value=b.bookingDate||'';
+  document.getElementById('eb-no').value=b.bookingNo||'';
+  document.getElementById('eb-by').value=b.bookedBy||'';
+  document.getElementById('eb-paid-by').value=b.paidBy||b.bookedBy||'';
+  document.getElementById('eb-delivery').value=b.deliveryDate||'';
+  document.getElementById('eb-cap').value=b.capacity||9000;
+  document.getElementById('eb-pay').value=b.paymentAmount||'';
+  document.getElementById('eb-tip').value=b.tipAmount||0;
+  document.getElementById('eb-status').value=b.status||'Delivered';
+  // Load linked meter readings
+  const mEntry=S.get('meterlog').find(l=>l.bookingId===id);
+  document.getElementById('eb-meter-start').value=mEntry?(mEntry.startReading||mEntry.reading||''):'';
+  // End reading: use stored value if present, otherwise infer from the next entry in the sorted log
+  let ebEndVal='';
+  if(mEntry){
+    if(mEntry.endReading){
+      ebEndVal=mEntry.endReading;
+    } else {
+      const sortedLog=getSortedMeterLog();
+      const idx=sortedLog.findIndex(l=>l.id===mEntry.id);
+      if(idx>=0 && idx<sortedLog.length-1) ebEndVal=sortedLog[idx+1].reading||'';
+    }
+  }
+  document.getElementById('eb-meter-end').value=ebEndVal;
+  onEditSourceChange(); // apply Corp/Private rules
+  new bootstrap.Modal(document.getElementById('editBookingModal')).show();
+}
+function saveEditBooking(){
+  const id=document.getElementById('eb-id').value;
+  S.update('bookings',id,{
+    source:document.getElementById('eb-source').value,
+    bookingDate:document.getElementById('eb-date').value,
+    bookingNo:document.getElementById('eb-no').value||null,
+    bookedBy:document.getElementById('eb-by').value||null,
+    paidBy:document.getElementById('eb-paid-by').value||document.getElementById('eb-by').value||null,
+    deliveryDate:document.getElementById('eb-delivery').value||null,
+    capacity:parseInt(document.getElementById('eb-cap').value)||9000,
+    paymentAmount:parseFloat(document.getElementById('eb-pay').value)||0,
+    tipAmount:parseFloat(document.getElementById('eb-tip').value)||0,
+    status:document.getElementById('eb-status').value,
+  });
+  // Update linked meterlog entry with edited readings
+  const newStart=document.getElementById('eb-meter-start').value?parseInt(document.getElementById('eb-meter-start').value):null;
+  const newEnd=document.getElementById('eb-meter-end').value?parseInt(document.getElementById('eb-meter-end').value):null;
+  const existingEntry=S.get('meterlog').find(l=>l.bookingId===id);
+  if(existingEntry){
+    // Update existing entry
+    S.update('meterlog',existingEntry.id,{reading:newStart||existingEntry.reading, startReading:newStart||null, endReading:newEnd||null});
+    if(!newStart){
+      // If start reading cleared, unlink entry from booking
+      S.update('meterlog',existingEntry.id,{bookingId:null});
+    }
+  } else if(newStart){
+    // No entry yet — create one
+    const bDate=document.getElementById('eb-date').value;
+    S.add('meterlog',{date:bDate, reading:newStart, startReading:newStart, endReading:newEnd||null, bookingId:id, note:''});
+  }
+  bootstrap.Modal.getInstance(document.getElementById('editBookingModal')).hide();
+  showAlert('Booking updated!');
+  renderBookings();
+}
+function deleteBooking(id){
+  if(!confirm('Delete this booking? Its meter log entry will also be removed.')) return;
+  S.del('bookings',id);
+  // Remove linked meter log entry
+  S.set('meterlog', S.get('meterlog').map(l=>l.bookingId===id?{...l,bookingId:null}:l));
+  showAlert('Booking deleted.','info');
+  renderBookings();
+}
+
+// ================================================================
+// EXPENSES
+// ================================================================
+function addExpense(e){
+  e.preventDefault();
+  S.add('expenses',{monthYear:currentMonth,date:document.getElementById('e-date').value,
+    description:document.getElementById('e-desc').value,amount:parseFloat(document.getElementById('e-amt').value)});
+  document.getElementById('e-desc').value=''; document.getElementById('e-amt').value='';
+  document.getElementById('e-date').value=today();
+  showAlert('Expense added!'); renderExpenses(); rebuildMonthSelect();
+}
+function renderExpenses(){
+  document.getElementById('e-date').value=today();
+  const es=S.get('expenses').filter(e=>e.monthYear===currentMonth);
+  const total=es.reduce((s,e)=>s+e.amount,0);
+  const bar=document.getElementById('expenses-summary-bar');
+  if(total){ bar.style.display='';
+    bar.innerHTML=`<i class="bi bi-calculator me-1"></i>Total: <strong>${fmtMoney(total)}</strong> &bull; Per flat (÷7): <strong>${fmtMoney(total/7)}</strong>`;
+  } else { bar.style.display='none'; }
+  document.getElementById('expenses-list').innerHTML=es.length?`
+    <table class="table table-hover mb-0">
+      <thead><tr><th>Date</th><th>Description</th><th class="text-end">Amount</th><th class="text-end">Per Flat</th><th></th></tr></thead>
+      <tbody>${es.map(e=>`<tr>
+        <td>${e.date}</td><td>${e.description}</td>
+        <td class="text-end">${fmtMoney(e.amount)}</td>
+        <td class="text-end text-muted">${fmtMoney(e.amount/7)}</td>
+        <td><button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="deleteExpense('${e.id}')"><i class="bi bi-trash"></i></button></td>
+      </tr>`).join('')}</tbody>
+      <tfoot class="table-light fw-semibold">
+        <tr><td colspan="2">Total</td><td class="text-end">${fmtMoney(total)}</td><td class="text-end text-muted">${fmtMoney(total/7)}</td><td></td></tr>
+      </tfoot>
+    </table>`
+    :`<div class="text-center text-muted py-5"><i class="bi bi-receipt fs-1 d-block mb-2 opacity-25"></i>No expenses for ${monthLabel(currentMonth)}</div>`;
+}
+function deleteExpense(id){
+  if(!confirm('Delete this expense?')) return;
+  S.del('expenses',id); showAlert('Expense deleted.','info'); renderExpenses();
+}
+
+// ================================================================
+// FLAT METER READINGS
+// ================================================================
+function renderReadings(){
+  const prevMY=prevMonthStr(currentMonth);
+  document.getElementById('readings-month-label').textContent=monthLabel(currentMonth);
+  const residents=S.get('residents');
+  const allRd=S.get('readings');
+  const curMap={}, prevMap={};
+  allRd.filter(r=>r.monthYear===currentMonth).forEach(r=>curMap[r.residentId]=r.reading);
+  allRd.filter(r=>r.monthYear===prevMY).forEach(r=>prevMap[r.residentId]=r.reading);
+
+  document.getElementById('readings-tbody').innerHTML=residents.map(r=>{
+    const curVal=curMap[r.id]??'';
+    const prevVal=prevMap[r.id]??null;
+    const prevDisp=prevVal!=null?prevVal:'<span class="text-muted small">—</span>';
+    const consumed=(prevVal!=null&&curVal!==''&&Number(curVal)>=prevVal)
+      ?`<span class="text-success fw-semibold">${fmt(Number(curVal)-prevVal)} L</span>`
+      :(prevVal!=null&&curVal!==''&&Number(curVal)<prevVal)
+      ?`<span class="text-danger small">Reading &lt; Previous!</span>`
+      :'<span class="text-muted">—</span>';
+    return `<tr>
+      <td class="fw-semibold">${r.name}</td>
+      <td class="text-muted text-end">${prevDisp}</td>
+      <td><input type="number" class="form-control form-control-sm rd-cur" data-rid="${r.id}" value="${curVal}" placeholder="Enter reading" oninput="updateCons(this)"></td>
+      <td id="cons-${r.id}">${consumed}</td>
+    </tr>`;
+  }).join('');
+}
+function updateCons(el){
+  const rid=el.dataset.rid;
+  const prevMY=prevMonthStr(currentMonth);
+  const prevReading=S.get('readings').find(r=>r.residentId===rid&&r.monthYear===prevMY)?.reading??null;
+  const curVal=el.value!==''?Number(el.value):null;
+  const disp=document.getElementById('cons-'+rid);
+  if(prevReading!=null&&curVal!=null&&curVal>=prevReading)
+    disp.innerHTML=`<span class="text-success fw-semibold">${fmt(curVal-prevReading)} L</span>`;
+  else if(prevReading!=null&&curVal!=null&&curVal<prevReading)
+    disp.innerHTML=`<span class="text-danger small">Reading &lt; Previous!</span>`;
+  else disp.innerHTML='<span class="text-muted">—</span>';
+}
+function saveReadings(){
+  const residents=S.get('residents');
+  const existing=S.get('readings');
+  residents.forEach(r=>{
+    const el=document.querySelector(`.rd-cur[data-rid="${r.id}"]`);
+    const val=el?.value!==''&&el?.value!=null?parseInt(el.value):null;
+    if(val==null) return;
+    const idx=existing.findIndex(x=>x.residentId===r.id&&x.monthYear===currentMonth);
+    if(idx>=0){ existing[idx].reading=val; }
+    else{ existing.push({id:genId(),residentId:r.id,monthYear:currentMonth,reading:val}); }
+  });
+  S.set('readings',existing);
+  showAlert('Readings saved!'); rebuildMonthSelect(); renderReadings();
+}
+
+// ================================================================
+// CLOSE MONTH
+// ================================================================
+function closeMonth(){
+  const my=currentMonth;
+  if(isMonthClosed(my)){ showAlert(monthLabel(my)+' is already closed.','warning'); return; }
+
+  const {rows}=computeStatement(my);
+  const warnings=[];
+
+  const missingEnd=rows.filter(r=>r.endReading===null);
+  if(missingEnd.length>0)
+    warnings.push(`⚠️ End meter readings missing for: ${missingEnd.map(r=>r.name).join(', ')}`);
+
+  const outstanding=rows.filter(r=>r.balance!==0);
+  const carryLines=outstanding.map(r=>
+    r.balance>0
+      ? `${r.name}: owes ₹${r.balance} (carried forward)`
+      : `${r.name}: advance ₹${Math.abs(r.balance)} (carried forward)`
+  );
+  if(carryLines.length>0)
+    warnings.push('Balances to carry forward:\n'+carryLines.join('\n'));
+
+  const warnText=warnings.length>0?'\n\n'+warnings.join('\n\n'):'';
+  const confirmed=confirm(
+    `Close ${monthLabel(my)}?${warnText}\n\nOnce closed, ${monthLabel(nextMonthStr(my))} will be unlocked.`
+  );
+  if(!confirmed) return;
+
+  if(!Array.isArray(DB.closedMonths)) DB.closedMonths=[];
+  DB.closedMonths.push({monthYear:my, closedAt:today()});
+  scheduleSave();
+
+  rebuildMonthSelect();
+  updateMonthBar();
+  currentMonth=nextMonthStr(my);
+  document.getElementById('monthSelect').value=currentMonth;
+  updateMonthBar();
+  renderStatement();
+  showAlert(`${monthLabel(my)} closed ✓  —  ${monthLabel(currentMonth)} is now open.`,'success');
+}
+
+// ================================================================
+// STATEMENT
+// ================================================================
+function renderStatement(){
+  const {rows,totalWater,totalOther,totalCons}=computeStatement(currentMonth);
+  const payments=S.get('payments').filter(p=>p.monthYear===currentMonth);
+  const bs=bookingSummary(currentMonth);
+  const label=monthLabel(currentMonth);
+  const closed=isMonthClosed(currentMonth);
+
+  document.getElementById('stmt-month-label').textContent=label;
+  document.getElementById('payments-month-label').textContent=label;
+  updateMonthBar();
+
+  // Close-month action area
+  const closeArea=document.getElementById('stmt-close-area');
+  if(closeArea){
+    if(closed){
+      const info=(DB.closedMonths||[]).find(c=>c.monthYear===currentMonth);
+      closeArea.innerHTML=`<span class="badge bg-success fs-6 px-3 py-2"><i class="bi bi-lock-fill me-2"></i>Closed${info?.closedAt?' on '+info.closedAt:''}</span>`;
+    } else {
+      closeArea.innerHTML=`<button class="btn btn-warning fw-semibold" onclick="closeMonth()"><i class="bi bi-lock me-2"></i>Close ${label}</button>`;
+    }
+  }
+
+  // Migrated-data note — Jan 2026 only
+  const migNote = document.getElementById('stmt-migration-note');
+  if(migNote){
+    if(currentMonth === '2026-01'){
+      migNote.innerHTML=`
+        <div style="background:#f0f7ff;border:1.5px solid #90caf9;border-radius:10px;padding:.75rem 1.1rem;display:flex;align-items:flex-start;gap:.75rem">
+          <i class="bi bi-info-circle-fill" style="color:#1565c0;font-size:1.2rem;margin-top:.05rem;flex-shrink:0"></i>
+          <div style="font-size:.85rem;color:#1a3a5c;line-height:1.55">
+            <span class="fw-semibold">About this statement —</span>
+            This is the first month tracked in the app. The consumption figures and balances for January 2026 have been carefully set up using your historical data — however, individual payment records from this period were not migrated.
+            If you need more details, please reach out to <strong>Velu</strong> at <a href="tel:9940258884" style="color:#1565c0;text-decoration:none;font-weight:600">9940258884</a>.
+          </div>
+        </div>`;
+    } else {
+      migNote.innerHTML='';
+    }
+  }
+
+  // Payment due-date banner — 10th of the month following the statement month
+  // Only shown when at least one resident has an unsettled balance
+  const hasUnsettled = rows.some(r => r.balance !== 0);
+  const dueBanner = document.getElementById('stmt-due-banner');
+  if(dueBanner){
+    if(closed || !hasUnsettled){
+      dueBanner.innerHTML=''; // closed or fully settled — no reminder needed
+    } else {
+      const nxtMY   = nextMonthStr(currentMonth);
+      const [ny,nm] = nxtMY.split('-').map(Number);
+      const dueDate = new Date(ny, nm-1, 10);           // 10th of next month
+      const todayD  = new Date(today());
+      const diffMs  = dueDate - todayD;
+      const diffDays= Math.round(diffMs / 86400000);
+      const dueFmt  = dueDate.toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+
+      let bg, border, iconHtml, statusHtml;
+      if(diffDays > 3){
+        bg='#e8f5e9'; border='#2e7d32'; iconHtml='<i class="bi bi-calendar-check text-success fs-5 me-3"></i>';
+        statusHtml=`<span class="badge bg-success ms-2">${diffDays} days left</span>`;
+      } else if(diffDays > 0){
+        bg='#fff8e1'; border='#f9a825'; iconHtml='<i class="bi bi-calendar-exclamation text-warning fs-5 me-3"></i>';
+        statusHtml=`<span class="badge bg-warning text-dark ms-2">Only ${diffDays} day${diffDays>1?'s':''} left!</span>`;
+      } else if(diffDays === 0){
+        bg='#fff3e0'; border='#e65100'; iconHtml='<i class="bi bi-alarm-fill text-danger fs-5 me-3"></i>';
+        statusHtml=`<span class="badge bg-danger ms-2">Due TODAY</span>`;
+      } else {
+        bg='#fce4ec'; border='#b71c1c'; iconHtml='<i class="bi bi-exclamation-triangle-fill text-danger fs-5 me-3"></i>';
+        statusHtml=`<span class="badge bg-danger ms-2">Overdue by ${Math.abs(diffDays)} day${Math.abs(diffDays)>1?'s':''}</span>`;
+      }
+
+      dueBanner.innerHTML=`
+        <div style="background:${bg};border:1.5px solid ${border};border-radius:10px;
+                    padding:.7rem 1.1rem;display:flex;align-items:center;flex-wrap:wrap;gap:.4rem">
+          ${iconHtml}
+          <span style="font-size:.88rem;font-weight:600;color:#333">Payment Deadline</span>
+          <span style="font-size:.88rem;color:#555;margin-left:.35rem">— Due by <strong>${dueFmt}</strong></span>
+          ${statusHtml}
+          <span style="margin-left:auto;font-size:.75rem;color:#777"><i class="bi bi-info-circle me-1"></i>10th of every month</span>
+        </div>`;
+    }
+  }
+
+  const volPct = bs.totalCapacity>0 ? Math.round(bs.totalVolume/bs.totalCapacity*100) : 0;
+  const perFlat = totalOther>0 ? fmtMoney(totalOther/7) : '—';
+
+  // Highest / lowest consumption across residents with data this month
+  const rowsWithCons = rows.filter(r=>r.consumption>0);
+  const highRow = rowsWithCons.length ? rowsWithCons.reduce((a,b)=>a.consumption>b.consumption?a:b) : null;
+  const lowRow  = rowsWithCons.length ? rowsWithCons.reduce((a,b)=>a.consumption<b.consumption?a:b) : null;
+  const highPct = highRow ? Math.round(highRow.pct*1000)/10 : 0;
+  const lowPct  = lowRow  ? Math.round(lowRow.pct*1000)/10  : 0;
+  const highName = highRow ? highRow.name.split(' ')[0] : '—';
+  const lowName  = lowRow  ? lowRow.name.split(' ')[0]  : '—';
+
+  document.getElementById('stmt-stats').innerHTML=`
+    <div class="col-6 col-sm-4 col-lg-2">
+      <div class="card h-100 overflow-hidden" style="border:none;box-shadow:0 3px 14px rgba(26,111,175,.15)">
+        <div style="background:linear-gradient(135deg,#1a6faf 0%,#2196f3 100%);padding:1.1rem 1.2rem .8rem">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <div style="font-size:2rem;font-weight:800;color:#fff;line-height:1">${bs.count}</div>
+              <div style="color:rgba(255,255,255,.85);font-size:.78rem;margin-top:.25rem;font-weight:500;letter-spacing:.4px;text-transform:uppercase">Tanker Bookings</div>
+            </div>
+            <div style="background:rgba(255,255,255,.18);border-radius:12px;padding:.55rem .65rem;font-size:1.5rem;color:#fff"><i class="bi bi-truck"></i></div>
+          </div>
+        </div>
+        <div style="padding:.55rem 1.2rem;background:#f0f7ff;font-size:.78rem;color:#1a6faf">
+          ${bs.pendingCount>0
+            ? `<i class="bi bi-hourglass-split me-1 text-warning"></i><span class="text-warning fw-semibold">${bs.pendingCount} pending delivery</span>`
+            : `<i class="bi bi-check-circle-fill me-1 text-success"></i><span class="text-success fw-semibold">All deliveries confirmed</span>`}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-6 col-sm-4 col-lg-2">
+      <div class="card h-100 overflow-hidden" style="border:none;box-shadow:0 3px 14px rgba(0,150,136,.15)">
+        <div style="background:linear-gradient(135deg,#00897b 0%,#26c6b0 100%);padding:1.1rem 1.2rem .8rem">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <div style="font-size:1.6rem;font-weight:800;color:#fff;line-height:1">${fmt(bs.totalVolume)}<span style="font-size:.9rem;font-weight:500"> L</span></div>
+              <div style="color:rgba(255,255,255,.85);font-size:.78rem;margin-top:.25rem;font-weight:500;letter-spacing:.4px;text-transform:uppercase">Actual Delivered</div>
+            </div>
+            <div style="background:rgba(255,255,255,.18);border-radius:12px;padding:.55rem .65rem;font-size:1.5rem;color:#fff"><i class="bi bi-droplet-fill"></i></div>
+          </div>
+          <div style="margin-top:.7rem">
+            <div style="background:rgba(255,255,255,.25);border-radius:99px;height:5px;overflow:hidden">
+              <div style="background:#fff;width:${volPct}%;height:100%;border-radius:99px;transition:width .4s"></div>
+            </div>
+          </div>
+        </div>
+        <div style="padding:.55rem 1.2rem;background:#e8f5f3;font-size:.78rem;color:#00695c">
+          <i class="bi bi-box-seam me-1"></i>Booked: <strong>${fmt(bs.totalCapacity)} L</strong>
+          <span class="ms-2 text-muted">(${volPct}% delivered)</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-6 col-sm-4 col-lg-2">
+      <div class="card h-100 overflow-hidden" style="border:none;box-shadow:0 3px 14px rgba(40,167,69,.15)">
+        <div style="background:linear-gradient(135deg,#1e7e34 0%,#48c774 100%);padding:1.1rem 1.2rem .8rem">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <div style="font-size:1.55rem;font-weight:800;color:#fff;line-height:1">${fmtMoney(totalWater)}</div>
+              <div style="color:rgba(255,255,255,.85);font-size:.78rem;margin-top:.25rem;font-weight:500;letter-spacing:.4px;text-transform:uppercase">Water Cost</div>
+            </div>
+            <div style="background:rgba(255,255,255,.18);border-radius:12px;padding:.55rem .65rem;font-size:1.5rem;color:#fff"><i class="bi bi-cash-stack"></i></div>
+          </div>
+        </div>
+        <div style="padding:.55rem 1.2rem;background:#eaf7ee;font-size:.78rem;color:#155724">
+          <i class="bi bi-people-fill me-1"></i>Avg per flat: <strong>${totalWater>0?fmtMoney(Math.round(totalWater/7)):'—'}</strong>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-6 col-sm-4 col-lg-2">
+      <div class="card h-100 overflow-hidden" style="border:none;box-shadow:0 3px 14px rgba(255,152,0,.15)">
+        <div style="background:linear-gradient(135deg,#e65100 0%,#ffa726 100%);padding:1.1rem 1.2rem .8rem">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <div style="font-size:1.55rem;font-weight:800;color:#fff;line-height:1">${totalOther>0?fmtMoney(totalOther):'—'}</div>
+              <div style="color:rgba(255,255,255,.85);font-size:.78rem;margin-top:.25rem;font-weight:500;letter-spacing:.4px;text-transform:uppercase">Other Expenses</div>
+            </div>
+            <div style="background:rgba(255,255,255,.18);border-radius:12px;padding:.55rem .65rem;font-size:1.5rem;color:#fff"><i class="bi bi-receipt-cutoff"></i></div>
+          </div>
+        </div>
+        <div style="padding:.55rem 1.2rem;background:#fff3e0;font-size:.78rem;color:#bf360c">
+          <i class="bi bi-person-fill me-1"></i>Per flat: <strong>${perFlat}</strong>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-6 col-sm-4 col-lg-2">
+      <div class="card h-100 overflow-hidden" style="border:none;box-shadow:0 3px 14px rgba(106,27,154,.15)">
+        <div style="background:linear-gradient(135deg,#6a1b9a 0%,#ab47bc 100%);padding:1.1rem 1.2rem .8rem">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <div style="font-size:1.55rem;font-weight:800;color:#fff;line-height:1">
+                ${highRow ? fmt(highRow.consumption)+' <span style="font-size:.85rem;font-weight:500">L</span>' : '—'}
+              </div>
+              <div style="color:rgba(255,255,255,.85);font-size:.78rem;margin-top:.25rem;font-weight:500;letter-spacing:.4px;text-transform:uppercase">Highest Consumption</div>
+            </div>
+            <div style="background:rgba(255,255,255,.18);border-radius:12px;padding:.55rem .65rem;font-size:1.5rem;color:#fff"><i class="bi bi-graph-up-arrow"></i></div>
+          </div>
+        </div>
+        <div style="padding:.55rem 1.2rem;background:#f3e5f5;font-size:.78rem;color:#6a1b9a">
+          <i class="bi bi-person-fill me-1"></i><strong>${highName}</strong>
+          <span class="ms-1 text-muted">· ${highPct}% of block</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-6 col-sm-4 col-lg-2">
+      <div class="card h-100 overflow-hidden" style="border:none;box-shadow:0 3px 14px rgba(0,131,143,.15)">
+        <div style="background:linear-gradient(135deg,#00838f 0%,#26c6da 100%);padding:1.1rem 1.2rem .8rem">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <div style="font-size:1.55rem;font-weight:800;color:#fff;line-height:1">
+                ${lowRow ? fmt(lowRow.consumption)+' <span style="font-size:.85rem;font-weight:500">L</span>' : '—'}
+              </div>
+              <div style="color:rgba(255,255,255,.85);font-size:.78rem;margin-top:.25rem;font-weight:500;letter-spacing:.4px;text-transform:uppercase">Lowest Consumption</div>
+            </div>
+            <div style="background:rgba(255,255,255,.18);border-radius:12px;padding:.55rem .65rem;font-size:1.5rem;color:#fff"><i class="bi bi-graph-down-arrow"></i></div>
+          </div>
+        </div>
+        <div style="padding:.55rem 1.2rem;background:#e0f7fa;font-size:.78rem;color:#006064">
+          <i class="bi bi-person-fill me-1"></i><strong>${lowName}</strong>
+          <span class="ms-1 text-muted">· ${lowPct}% of block</span>
+        </div>
+      </div>
+    </div>`;
+
+  let totCons=0,totWC=0,totOE=0,totPrev=0,totGross=0,totPaid=0,totBookingsPaid=0,totBal=0;
+  rows.forEach(r=>{
+    totCons+=r.consumption; totWC+=r.waterCharge; totOE+=r.otherExpenses;
+    totPrev+=r.prevBalance; totGross+=r.grossDue; totPaid+=r.paidThisMonth; totBookingsPaid+=r.bookingsPaid; totBal+=r.balance;
+  });
+
+  document.getElementById('stmt-table').innerHTML=`
+    <table class="table table-bordered mb-0" style="font-size:.88rem">
+      <thead>
+        <tr class="text-center" style="background:#d4e6f1">
+          <th rowspan="2" class="align-middle text-start">Name</th>
+          <th colspan="2">Meter Reading</th>
+          <th rowspan="2" class="align-middle">Consumption (L)**</th>
+          <th rowspan="2" class="align-middle">%</th>
+          <th rowspan="2" class="align-middle">Water (₹)</th>
+          <th rowspan="2" class="align-middle">Other (₹)</th>
+          <th rowspan="2" class="align-middle">Prev Bal (₹)</th>
+          <th rowspan="2" class="align-middle">Total Due (₹)</th>
+          <th colspan="2" class="text-center">Paid (₹)</th>
+          <th rowspan="2" class="align-middle">Balance (₹)</th>
+          <th rowspan="2" class="align-middle">Action</th>
+        </tr>
+        <tr style="background:#d4e6f1"><th>Start</th><th>End</th><th>Total</th><th>At Booking</th></tr>
+      </thead>
+      <tbody>
+        ${rows.map(r=>{
+          const prevDisp = r.prevBalance>0
+            ? `<span class="text-danger">₹${Math.round(r.prevBalance)}</span>`
+            : r.prevBalance<0
+            ? `<span class="text-success">Adv ₹${Math.round(Math.abs(r.prevBalance))}</span>`
+            : '—';
+          const balDisp = r.balance>0
+            ? `<span class="text-danger fw-bold">₹${Math.round(r.balance)}</span>`
+            : r.balance<0
+            ? `<span class="text-success fw-bold">Adv ₹${Math.round(Math.abs(r.balance))}</span>`
+            : `<span class="badge bg-success"><i class="bi bi-check-lg me-1"></i>Settled</span>`;
+          const endEntered = r.endReading !== null;
+          const monthClosed = isMonthClosed(currentMonth);
+          const settledDisp = `<span class="badge bg-success"><i class="bi bi-check-lg me-1"></i>Settled</span>`;
+          const settledAction = `<span class="text-success small"><i class="bi bi-check-circle-fill"></i></span>`;
+          const actionBtn = monthClosed
+            ? settledAction
+            : !endEntered
+            ? `<span class="text-muted small">—</span>`
+            : r.balance>0
+            ? `<button class="btn-action btn-action-green" onclick="openQuickPay('${r.residentId}',${r.balance})"><i class="bi bi-cash-coin"></i>Record</button>`
+            : r.balance<0
+            ? `<button class="btn-action btn-action-amber" onclick="openQuickPay('${r.residentId}',${r.balance})"><i class="bi bi-cash-coin"></i>Refund</button>`
+            : settledAction;
+          const balDispFinal = monthClosed
+            ? settledDisp
+            : !endEntered
+            ? `<span class="text-muted small">Pending</span>`
+            : balDisp;
+          return `<tr>
+            <td class="fw-semibold">${r.name}</td>
+            <td class="text-end">${fmt(r.startReading)}</td>
+            <td class="text-end">${fmt(r.endReading)}</td>
+            <td class="text-end">${r.consumption?fmt(r.consumption):'—'}${r.consOverridden?' <span title="Manually set (anomaly — 12-month average)" class="badge bg-warning text-dark ms-1" style="font-size:.7em">✎ avg</span>':''}</td>
+            <td class="text-end">${(r.pct*100).toFixed(1)}%</td>
+            <td class="text-end">${r.waterCharge?fmtMoney(r.waterCharge):'—'}</td>
+            <td class="text-end">${r.otherExpenses?fmtMoney(r.otherExpenses):'—'}</td>
+            <td class="text-end">${prevDisp}</td>
+            <td class="text-end fw-semibold">₹${r.grossDue}</td>
+            <td class="text-end text-success">${r.paidThisMonth>0?fmtMoney(Math.round(r.paidThisMonth)):'—'}</td>
+            <td class="text-end text-muted">${r.bookingsPaid>0?fmtMoney(r.bookingsPaid):'—'}</td>
+            <td class="text-end">${balDispFinal}</td>
+            <td class="text-center">${actionBtn}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+      <tfoot style="background:#eaf4fb;font-weight:600;font-size:.88rem">
+        <tr><td>Total</td><td></td><td></td>
+          <td class="text-end">${fmt(totCons)} L</td>
+          <td class="text-end">100%</td>
+          <td class="text-end">${fmtMoney(totWC)}</td>
+          <td class="text-end">${fmtMoney(totOE)}</td>
+          <td class="text-end">${fmtMoney(totPrev)}</td>
+          <td class="text-end">${fmtMoney(totGross)}</td>
+          <td class="text-end text-success">${fmtMoney(Math.round(totPaid))}</td>
+          <td class="text-end text-muted">${fmtMoney(totBookingsPaid)}</td>
+          <td class="text-end ${totBal>0?'text-danger':'text-success'}">${fmtMoney(totBal)}</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>`;
+
+  // Payment receipts log — booking advances + direct payments combined
+  const bookingsThisMonth = S.get('bookings').filter(b=>b.monthYear===currentMonth);
+  // Build booking advance rows: one per booking where paidBy (or bookedBy) is a real resident
+  const bookingAdvRows = bookingsThisMonth
+    .filter(b=>b.paidBy||b.bookedBy)
+    .map(b=>({
+      residentId: b.paidBy||b.bookedBy,
+      date: b.bookingDate||'—',
+      amount: (b.paymentAmount||0)+(b.tipAmount||0),
+      notes: `Paid at booking (${b.bookingDate||'—'})`,
+      isBooking: true,
+      bookingId: b.id
+    }))
+    .filter(x=>x.amount>0);
+
+  const allEntries = [
+    ...bookingAdvRows,
+    ...payments.map(p=>({...p, isBooking:false}))
+  ].sort((a,b)=>a.date.localeCompare(b.date));
+
+  const totalAllPaid = allEntries.reduce((s,e)=>s+e.amount,0);
+
+  document.getElementById('payments-list').innerHTML = allEntries.length ? `
+    <table class="table table-hover mb-0" style="font-size:.9rem">
+      <thead><tr><th>Resident</th><th>Date</th><th class="text-end">Amount (₹)</th><th>Notes</th><th></th></tr></thead>
+      <tbody>${allEntries.map(e=>`<tr${e.isBooking?' class="table-light"':''}>
+        <td class="fw-semibold">${residentName(e.residentId)}</td>
+        <td>${e.date}</td>
+        <td class="text-end fw-semibold ${e.isBooking?'text-primary':'text-success'}">${fmtMoney(e.amount)}</td>
+        <td class="text-muted small">${e.isBooking?`<i class="bi bi-truck me-1 text-primary"></i>${e.notes}`:e.notes||'—'}</td>
+        <td>${e.isBooking
+          ? '<span class="badge bg-light text-secondary border">Auto</span>'
+          : `<button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="deletePayment('${e.id}')"><i class="bi bi-trash"></i></button>`}</td>
+      </tr>`).join('')}</tbody>
+      <tfoot class="table-light fw-semibold">
+        <tr><td colspan="2">Total Accounted</td>
+          <td class="text-end text-success">${fmtMoney(totalAllPaid)}</td>
+          <td colspan="2" class="text-muted small">Auto = paid at booking (credited automatically)</td>
+        </tr>
+      </tfoot>
+    </table>`
+    : '<div class="text-center text-muted py-3 small"><i class="bi bi-inbox me-1"></i>No bookings or payments for this month yet.</div>';
+}
+
+function openQuickPay(residentId, balance){
+  const res=S.get('residents').find(r=>r.id===residentId);
+  const isRefund = balance < 0;
+  const absAmt = Math.abs(balance);
+
+  document.getElementById('qp-resident-id').value = residentId;
+  document.getElementById('qp-mode').value = isRefund ? 'refund' : 'payment';
+  document.getElementById('qp-name').textContent = res ? res.name : '—';
+  document.getElementById('qp-amt').value = absAmt || '';
+  document.getElementById('qp-date').value = today();
+  document.getElementById('qp-notes').value = '';
+
+  if(isRefund){
+    document.getElementById('qp-header').className   = 'modal-header text-white bg-warning';
+    document.getElementById('qp-title').innerHTML    = '<i class="bi bi-cash-coin me-2"></i>Refund Advance';
+    document.getElementById('qp-balance-label').textContent = 'Advance to refund: ₹'+absAmt;
+    document.getElementById('qp-amt-label').textContent = 'Refund Amount (₹) *';
+    document.getElementById('qp-save-btn').className = 'btn btn-warning w-100 py-2';
+    document.getElementById('qp-save-btn').innerHTML = '<i class="bi bi-check-lg me-1"></i>Save Refund';
+  } else {
+    document.getElementById('qp-header').className   = 'modal-header text-white bg-success';
+    document.getElementById('qp-title').innerHTML    = '<i class="bi bi-cash-coin me-2"></i>Record Payment';
+    document.getElementById('qp-balance-label').textContent = 'Balance due: '+fmtMoney(balance);
+    document.getElementById('qp-amt-label').textContent = 'Amount Received (₹) *';
+    document.getElementById('qp-save-btn').className = 'btn btn-success w-100 py-2';
+    document.getElementById('qp-save-btn').innerHTML = '<i class="bi bi-check-lg me-1"></i>Save Payment Receipt';
+  }
+
+  new bootstrap.Modal(document.getElementById('quickPayModal')).show();
+}
+function saveQuickPay(){
+  const residentId = document.getElementById('qp-resident-id').value;
+  const mode       = document.getElementById('qp-mode').value;
+  const entered    = parseFloat(document.getElementById('qp-amt').value);
+  if(!residentId || !entered || entered <= 0){ showAlert('Please enter a valid amount.','danger'); return; }
+  // Refund = money going OUT to the resident → save as negative to reduce their paid total
+  const amount = mode === 'refund' ? -entered : entered;
+  const notes  = document.getElementById('qp-notes').value || (mode==='refund' ? 'Refund' : '');
+  S.add('payments',{monthYear:currentMonth, residentId,
+    date: document.getElementById('qp-date').value || today(),
+    amount, notes});
+  bootstrap.Modal.getInstance(document.getElementById('quickPayModal')).hide();
+  showAlert(mode==='refund'
+    ? 'Refund of ₹'+entered+' recorded for '+residentName(residentId)+'.'
+    : 'Payment receipt recorded for '+residentName(residentId)+'!');
+  renderStatement();
+}
+function deletePayment(id){
+  if(!confirm('Remove this payment record?')) return;
+  S.del('payments',id); showAlert('Payment removed.','info'); renderStatement();
+}
+
+function showWhatsApp(){
+  const {rows,totalWater,totalOther}=computeStatement(currentMonth);
+  const bs=bookingSummary(currentMonth);
+  const label=monthLabel(currentMonth);
+  const d=new Date(currentMonth+'-01'); d.setMonth(d.getMonth()+1);
+  const dueDate=`10-${d.toLocaleString('en-IN',{month:'short'})}-${d.getFullYear()}`;
+  const pad=(s,n,r=false)=>{ s=String(s??'—'); return r?s.padStart(n,' '):s.padEnd(n,' '); };
+  const lines=[
+    `*Metro Water & Other Expenses — ${label}*`,
+    `Block B | Water Cost: ₹${Math.round(totalWater)} | Metro Water Delivered: ${fmt(bs.totalVolume)} L | Other: ₹${Math.round(totalOther)}`,
+    '',
+    pad('Name',22)+pad('Start',9,true)+pad('End',9,true)+pad('Ltrs',8,true)+pad('%',7,true)+pad('Water',8,true)+pad('Other',7,true)+pad('Due',8,true)+pad('Balance',9,true),
+    '─'.repeat(86),
+  ];
+  rows.forEach(r=>{
+    const prev=r.prevBalance>0?`(${Math.round(r.prevBalance)})`:r.prevBalance<0?`-${Math.round(Math.abs(r.prevBalance))}`:'—';
+    const total=r.balance>0?`₹${r.balance}`:r.balance<0?`Adv ₹${Math.abs(r.balance)}`:'-';
+    lines.push(pad(r.name.slice(0,21),22)+pad(r.startReading??'—',9,true)+pad(r.endReading??'—',9,true)+
+      pad(r.consumption||'—',8,true)+pad((r.pct*100).toFixed(1)+'%',7,true)+
+      pad('₹'+(r.waterCharge?Math.round(r.waterCharge):'0'),8,true)+pad('₹'+(r.otherExpenses?Math.round(r.otherExpenses):'0'),7,true)+
+      pad('₹'+Math.round(r.grossDue),8,true)+pad(total,9,true));
+  });
+  lines.push('─'.repeat(86),'',
+    `📅 Please pay by ${dueDate}`,
+    `💳 UPI: 9940258884@icici | Google Pay: 9940258884`,'',
+    `_Note: ( ) = outstanding. Negative = advance paid. Consumption includes Borewell water._`
+  );
+  document.getElementById('whatsapp-pre').textContent=lines.join('\n');
+  new bootstrap.Modal(document.getElementById('whatsappModal')).show();
+}
+function copyWhatsApp(){
+  navigator.clipboard.writeText(document.getElementById('whatsapp-pre').textContent).then(()=>{
+    const btn=document.querySelector('#whatsappModal .btn-success');
+    btn.innerHTML='<i class="bi bi-check-lg me-1"></i>Copied!';
+    setTimeout(()=>btn.innerHTML='<i class="bi bi-clipboard me-1"></i>Copy to Clipboard',2000);
+  });
+}
+
+// ================================================================
+// RESIDENTS
+// ================================================================
+function renderResidents(){
+  const res=S.get('residents');
+  document.getElementById('residents-table').innerHTML=`
+    <table class="table table-hover mb-0">
+      <thead><tr><th>#</th><th>Name</th><th>CMC No.</th><th>Mobile</th><th>Registered Name (Metro Water)</th><th></th></tr></thead>
+      <tbody>${res.map((r,i)=>`<tr>
+        <td class="text-muted">${i+1}</td><td class="fw-semibold">${r.name}</td>
+        <td><code>${r.cmc||'—'}</code></td><td>${r.mobile||'—'}</td><td>${r.nickname||'—'}</td>
+        <td><button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="editResident('${r.id}')"><i class="bi bi-pencil"></i></button></td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+}
+function editResident(id){
+  const r=S.get('residents').find(x=>x.id===id); if(!r) return;
+  document.getElementById('er-id').value=id; document.getElementById('er-name').value=r.name;
+  document.getElementById('er-cmc').value=r.cmc||''; document.getElementById('er-mobile').value=r.mobile||'';
+  document.getElementById('er-nick').value=r.nickname||'';
+  new bootstrap.Modal(document.getElementById('editResidentModal')).show();
+}
+function saveEditResident(){
+  const id=document.getElementById('er-id').value;
+  S.update('residents',id,{name:document.getElementById('er-name').value,cmc:document.getElementById('er-cmc').value,
+    mobile:document.getElementById('er-mobile').value,nickname:document.getElementById('er-nick').value});
+  bootstrap.Modal.getInstance(document.getElementById('editResidentModal')).hide();
+  showAlert('Resident updated!'); renderResidents();
+}
+
+// ================================================================
+// INIT
+// ================================================================
+// One-time migration: record Saravanan (Hari)'s Jan 2026 unpaid balance of ₹1264
+// Using a negative payment entry so computePrevBalances carries it forward correctly.
+function runMigrations(){
+  // v1 (removed): incorrect ₹1264 negative payment for Saravanan — was closing balance
+  //               for Jan-26, not an opening balance. Will be derived from statement data.
+  // v2: remove that incorrect entry if it exists in the data file
+  if(!DB._migration_v2){
+    const payments = S.get('payments');
+    const cleaned  = payments.filter(p => !(p.notes === 'Opening balance Jan 2026' && p.amount === -1264));
+    if(cleaned.length !== payments.length){
+      S.set('payments', cleaned);
+      console.log('Migration v2: removed incorrect Saravanan Jan-26 opening balance entry.');
+    }
+    DB._migration_v1 = '1'; // mark old migration done too so it never runs
+    DB._migration_v2 = '1';
+    scheduleSave();
+  }
+
+  // v3: Saravanan (r5) had an advance of ₹142 from Dec 2025 carried into Jan 2026
+  if(!DB._migration_v3){
+    const payments = S.get('payments');
+    const alreadyExists = payments.some(p =>
+      p.residentId === 'r5' && p.monthYear === '2025-12' && p.notes === 'Advance carried over from Dec 2025'
+    );
+    if(!alreadyExists){
+      S.add('payments', {
+        monthYear:  '2025-12',
+        residentId: 'r5',
+        date:       '2025-12-31',
+        amount:     142,
+        notes:      'Advance carried over from Dec 2025'
+      });
+      console.log('Migration v3: added ₹142 advance for Saravanan (Dec 2025 carry-over).');
+    }
+    DB._migration_v3 = '1';
+    scheduleSave();
+  }
+
+  // v4: Suresh (r7) Jan 2026 consumption anomaly — override with manually calculated 14,000 L average
+  if(!DB._migration_v4){
+    const overrides = S.get('consOverrides') || [];
+    const alreadyExists = overrides.some(o => o.residentId === 'r7' && o.monthYear === '2026-01');
+    if(!alreadyExists){
+      overrides.push({
+        id:          genId(),
+        residentId:  'r7',
+        monthYear:   '2026-01',
+        consumption: 14000,
+        notes:       'Anomaly — manually set to 12-month average (Jan 2026)'
+      });
+      S.set('consOverrides', overrides);
+      console.log('Migration v4: set Suresh Jan-26 consumption override to 14,000 L.');
+    }
+    DB._migration_v4 = '1';
+    scheduleSave();
+  }
+
+  // v5: Set Jan 2026 closing balances explicitly so Feb 2026 opens clean.
+  //     Only Saravanan (r5) carries an outstanding balance of ₹1264.
+  //     All other residents start Feb 2026 with zero prev balance.
+  if(!DB._migration_v5){
+    const cbOvs = S.get('closingBalOverrides') || [];
+    const jan26 = '2026-01';
+    const v5entries = [
+      { residentId:'r1', closingBalance: 0    },
+      { residentId:'r2', closingBalance: 0    },
+      { residentId:'r3', closingBalance: 0    },
+      { residentId:'r4', closingBalance: 0    },
+      { residentId:'r5', closingBalance: 1264 },  // Saravanan — unpaid Jan 2026
+      { residentId:'r6', closingBalance: 0    },
+      { residentId:'r7', closingBalance: 0    },
+    ];
+    v5entries.forEach(e=>{
+      const exists = cbOvs.some(o=>o.residentId===e.residentId && o.monthYear===jan26);
+      if(!exists) cbOvs.push({ id:genId(), monthYear:jan26, ...e });
+    });
+    S.set('closingBalOverrides', cbOvs);
+    console.log('Migration v5: Jan 2026 closing balances set — Saravanan ₹1264, all others ₹0.');
+    DB._migration_v5 = '1';
+    scheduleSave();
+  }
+
+  // v6: Bulk-close Jan 2025 – Dec 2025 (historical months, already settled)
+  if(!DB._migration_v6){
+    if(!Array.isArray(DB.closedMonths)) DB.closedMonths=[];
+    const months2025 = ['2025-01','2025-02','2025-03','2025-04','2025-05','2025-06',
+                        '2025-07','2025-08','2025-09','2025-10','2025-11','2025-12'];
+    months2025.forEach(my=>{
+      if(!DB.closedMonths.some(c=>c.monthYear===my)){
+        DB.closedMonths.push({monthYear:my, closedAt:'2025-12-31'});
+      }
+    });
+    console.log('Migration v6: closed all 12 months of 2025.');
+    DB._migration_v6 = '1';
+    scheduleSave();
+  }
+}
+
+function bootApp(){
+  const months=getMonths();
+  currentMonth=months[months.length-1]||new Date().toISOString().slice(0,7);
+  rebuildMonthSelect();
+  updateMonthBar();
+  // Dashboard is default tab — hide the month bar
+  const mb=document.querySelector('.month-bar');
+  if(mb) mb.style.display='none';
+  renderDashboard();
+}
+
+async function init(){
+  try{
+    _fbInit();
+    const msgEl = document.getElementById('fb-loading-msg');
+    if(msgEl) msgEl.textContent = 'Loading your data…';
+    await _fbLoad();
+    seedData();
+    runMigrations();
+    _fbHideOverlay();
+    _fbSetStatus('Cloud sync on', '#aaa');
+    bootApp();
+  } catch(e){
+    console.error('Firebase init failed:', e);
+    _fbShowError('Could not connect to cloud: ' + e.message + '. Check your internet connection and try again.');
+  }
+}
+
+init();
+</script>
+</body>
+</html>
