@@ -2390,7 +2390,16 @@ async function authSendOtp(){
     document.querySelector('[onclick="authSendOtp()"]').disabled = true;
     _authSetError('');
   } catch(e){
-    _authSetError('Could not send OTP: ' + e.message);
+    let msg = e.message || 'Unknown error';
+    if(e.code === 'auth/operation-not-allowed')
+      msg = 'Phone sign-in is not enabled. Please enable it in Firebase Console → Authentication → Sign-in method.';
+    else if(e.code === 'auth/billing-not-enabled')
+      msg = 'Phone sign-in requires Firebase Blaze plan. Try the email link option instead.';
+    else if(e.code === 'auth/too-many-requests')
+      msg = 'Too many attempts. Please wait a few minutes and try again.';
+    else if(e.code === 'auth/invalid-phone-number')
+      msg = 'Invalid phone number format. Please enter a valid 10-digit Indian mobile number.';
+    _authSetError('Could not send OTP: ' + msg);
     if(_recaptchaVerifier){ _recaptchaVerifier.clear(); _recaptchaVerifier = null; }
   }
 }
@@ -2429,7 +2438,12 @@ async function authSendEmailLink(){
     document.getElementById('auth-email').disabled = true;
     document.querySelector('[onclick="authSendEmailLink()"]').disabled = true;
   } catch(e){
-    _authSetError('Could not send link: ' + e.message);
+    let msg = e.message || 'Unknown error';
+    if(e.code === 'auth/operation-not-allowed')
+      msg = 'Email link sign-in is not enabled. Enable it in Firebase Console → Authentication → Sign-in method → Email/Password → Email link.';
+    else if(e.code === 'auth/unauthorized-continue-uri' || e.code === 'auth/invalid-continue-uri')
+      msg = 'This website domain is not authorized. Add "velurathnasabapathy.github.io" to Firebase Console → Authentication → Settings → Authorized domains.';
+    _authSetError('Could not send link: ' + msg);
   }
 }
 
@@ -2552,15 +2566,21 @@ async function init(){
     }
     seedData();
     runMigrations();
-    _fbHideOverlay();
     _fbSetStatus('Cloud sync on', '#aaa');
 
-    // Watch auth state — show login or boot app accordingly
+    // Keep loading overlay visible until auth state is confirmed (prevents flash)
+    const msgEl2 = document.getElementById('fb-loading-msg');
+    if(msgEl2) msgEl2.textContent = 'Checking sign-in…';
+
+    let _appBooted = false;
+
+    // Watch auth state — hide loading overlay AFTER auth state is known
     _fbAuth.onAuthStateChanged(async firebaseUser => {
+      _fbHideOverlay(); // safe to hide loading screen now
       if(firebaseUser){
         _authMapUser(firebaseUser);
         hideLoginOverlay();
-        bootApp();
+        if(!_appBooted){ _appBooted = true; bootApp(); }
         _authApplyRole();
       } else {
         // No user logged in — show login screen
