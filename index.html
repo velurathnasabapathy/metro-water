@@ -17,6 +17,7 @@
 <!-- Firebase SDK (compat build — works as plain script tags, no bundler needed) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <style>
 :root { --primary:#1a6faf; --primary-dark:#145a8f; --accent:#e8f4fd; }
 body { background:#f5f7fa; font-family:'Segoe UI',sans-serif; }
@@ -103,7 +104,39 @@ footer { background:#fff; border-top:1px solid #e9ecef; padding:1rem 0; margin-t
   <a onclick="showTab('readings')"  id="mn-readings"><i class="bi bi-speedometer"></i>Readings</a>
 </nav>
 
-<!-- Firebase loading overlay — shown briefly while connecting, hidden once data loads -->
+<!-- ── Login Overlay ─────────────────────────────────────────────── -->
+<div id="login-overlay" style="display:none;position:fixed;inset:0;background:rgba(15,30,50,.95);z-index:10000;align-items:center;justify-content:center;">
+  <div class="card p-4" style="max-width:380px;width:92%;border-radius:16px;">
+    <div class="text-center mb-4">
+      <div style="font-size:2.8rem;color:#1a6faf"><i class="bi bi-droplet-fill"></i></div>
+      <h5 class="fw-bold mb-1">Metro Water — Block B</h5>
+      <p class="text-muted small mb-0">Sign in with your email to continue</p>
+    </div>
+
+    <div id="auth-email-step">
+      <label class="form-label small fw-semibold"><i class="bi bi-envelope me-1 text-primary"></i>Email Address</label>
+      <input type="email" id="auth-email" class="form-control form-control-lg mb-3"
+             placeholder="you@gmail.com or you@yahoo.com"
+             inputmode="email" autocomplete="email"
+             onkeydown="if(event.key==='Enter') authContinue()">
+      <button class="btn btn-primary w-100 py-2" onclick="authContinue()" id="auth-continue-btn">
+        <i class="bi bi-arrow-right-circle me-2"></i>Continue
+      </button>
+    </div>
+
+    <div id="auth-provider-msg" style="display:none" class="text-center mt-3">
+      <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+      <span id="auth-provider-text" class="text-muted small"></span>
+    </div>
+
+    <p id="auth-error" class="text-danger small mt-3 mb-0 text-center" style="display:none"></p>
+
+    <p class="text-muted text-center mt-3 mb-0" style="font-size:.75rem;">
+      <i class="bi bi-shield-check me-1"></i>Secure sign-in via Google or Yahoo
+    </p>
+  </div>
+</div>
+
 <!-- Firebase loading overlay — shown briefly while connecting, hidden once data loads -->
 <div id="fb-loading-overlay" style="display:flex;position:fixed;inset:0;background:rgba(15,30,50,.92);z-index:9999;align-items:center;justify-content:center;">
   <div class="card p-4 text-center" style="max-width:420px;width:90%">
@@ -135,6 +168,8 @@ footer { background:#fff; border-top:1px solid #e9ecef; padding:1rem 0; margin-t
   <div class="container">
     <span class="navbar-brand"><i class="bi bi-droplet-fill me-2"></i>Metro Water — Block B</span>
     <span id="fb-status-badge" class="text-white-50 small ms-2 d-none d-lg-inline" style="font-size:.75rem;"><i class="bi bi-cloud-fill me-1"></i><span id="fb-status-text">Connecting…</span></span>
+    <span id="auth-user-badge" class="text-white-50 small ms-3 d-none d-lg-inline" style="font-size:.75rem;"></span>
+    <button id="auth-signout-btn" onclick="authSignOut()" class="btn btn-sm btn-outline-light ms-2 py-0" style="display:none;font-size:.75rem;"><i class="bi bi-box-arrow-right me-1"></i>Sign Out</button>
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMenu">
       <span class="navbar-toggler-icon"></span>
     </button>
@@ -476,15 +511,21 @@ footer { background:#fff; border-top:1px solid #e9ecef; padding:1rem 0; margin-t
 
       <hr class="my-3">
       <p class="small fw-semibold text-muted mb-2"><i class="bi bi-person me-1"></i>CURRENT RESIDENT</p>
-      <div class="row g-2 mb-2">
+      <div class="row g-2 mb-3">
         <div class="col-md-6">
           <label class="form-label small fw-semibold">Resident Name</label>
           <input type="text" id="er-resident" class="form-control" placeholder="Person currently living here">
         </div>
         <div class="col-md-6">
-          <label class="form-label small fw-semibold">Resident Mobile <small class="text-muted fw-normal">(for OTP login)</small></label>
-          <input type="tel" id="er-resmobile" class="form-control" placeholder="Resident's mobile for login">
+          <label class="form-label small fw-semibold">Resident Mobile</label>
+          <input type="tel" id="er-resmobile" class="form-control" placeholder="Resident's mobile">
         </div>
+      </div>
+      <div class="mb-2">
+        <label class="form-label small fw-semibold">
+          <i class="bi bi-envelope me-1 text-primary"></i>Login Email <small class="text-muted fw-normal">(Gmail or Yahoo — used to sign in)</small>
+        </label>
+        <input type="email" id="er-email" class="form-control" placeholder="resident@gmail.com or resident@yahoo.com">
       </div>
 
     </div>
@@ -2208,6 +2249,7 @@ function renderResidents(){
             <div class="col-12 mb-1"><span class="text-muted fw-semibold" style="font-size:.7rem;text-transform:uppercase;letter-spacing:.5px;"><i class="bi bi-person me-1"></i>Current Resident</span></div>
             <div class="col-6"><span class="text-muted" style="font-size:.72rem;">Name</span><br><span class="fw-semibold">${resident}</span></div>
             <div class="col-6"><span class="text-muted" style="font-size:.72rem;">Mobile</span><br>${resMobile}</div>
+            ${r.email ? `<div class="col-12 mt-1"><span class="text-muted" style="font-size:.72rem;"><i class="bi bi-envelope me-1"></i>Login Email</span><br><span style="font-size:.8rem;">${r.email}</span></div>` : ''}
           </div>
         </div>
       </div>
@@ -2218,24 +2260,26 @@ function renderResidents(){
 }
 function editResident(id){
   const r=S.get('residents').find(x=>x.id===id); if(!r) return;
-  document.getElementById('er-id').value       = id;
-  document.getElementById('er-name').value      = r.name           || '';   // Owner Name
+  document.getElementById('er-id').value        = id;
+  document.getElementById('er-name').value      = r.name           || '';
   document.getElementById('er-cmc').value       = r.cmc            || '';
-  document.getElementById('er-mobile').value    = r.mobile         || '';   // Registered Mobile
+  document.getElementById('er-mobile').value    = r.mobile         || '';
   document.getElementById('er-regname').value   = r.registeredName || r.nickname || '';
   document.getElementById('er-resident').value  = r.resident       || '';
   document.getElementById('er-resmobile').value = r.residentMobile || '';
+  document.getElementById('er-email').value     = r.email          || '';
   new bootstrap.Modal(document.getElementById('editResidentModal')).show();
 }
 function saveEditResident(){
   const id = document.getElementById('er-id').value;
   S.update('residents', id, {
-    name:           document.getElementById('er-name').value.trim(),     // Owner Name
+    name:           document.getElementById('er-name').value.trim(),
     cmc:            document.getElementById('er-cmc').value.trim(),
-    mobile:         document.getElementById('er-mobile').value.trim(),   // Registered Mobile
+    mobile:         document.getElementById('er-mobile').value.trim(),
     registeredName: document.getElementById('er-regname').value.trim(),
     resident:       document.getElementById('er-resident').value.trim(),
     residentMobile: document.getElementById('er-resmobile').value.trim(),
+    email:          document.getElementById('er-email').value.trim().toLowerCase(),
   });
   bootstrap.Modal.getInstance(document.getElementById('editResidentModal')).hide();
   showAlert('Resident updated!'); renderResidents();
@@ -2353,9 +2397,161 @@ function bootApp(){
   renderDashboard();
 }
 
+// ================================================================
+// AUTHENTICATION — Google & Yahoo OAuth (email-based provider detection)
+// ================================================================
+let _fbAuth = null;
+let _currentUser = null;
+const ADMIN_EMAILS = ['velu.rathnasabapathy@gmail.com'];
+
+// Gmail domains → Google OAuth; Yahoo domains → Yahoo OAuth
+const GMAIL_DOMAINS  = ['gmail.com', 'googlemail.com'];
+const YAHOO_DOMAINS  = ['yahoo.com', 'yahoo.co.in', 'yahoo.co.uk', 'yahoo.in', 'ymail.com', 'rocketmail.com'];
+
+function _authInit(){
+  if(_fbAuth) return;
+  _fbAuth = firebase.auth(_fbApp);
+}
+
+function showLoginOverlay(){
+  const el = document.getElementById('login-overlay');
+  if(el){ el.style.display = 'flex'; }
+  // Reset form state
+  const emailEl = document.getElementById('auth-email');
+  if(emailEl){ emailEl.disabled = false; emailEl.value = ''; }
+  const btn = document.getElementById('auth-continue-btn');
+  if(btn) btn.disabled = false;
+  document.getElementById('auth-provider-msg').style.display = 'none';
+  _authSetError('');
+}
+function hideLoginOverlay(){
+  const el = document.getElementById('login-overlay');
+  if(el) el.style.display = 'none';
+}
+function _authSetError(msg){
+  const el = document.getElementById('auth-error');
+  if(el){ el.textContent = msg; el.style.display = msg ? 'block' : 'none'; }
+  // Re-enable form on error
+  if(msg){
+    const emailEl = document.getElementById('auth-email');
+    if(emailEl) emailEl.disabled = false;
+    const btn = document.getElementById('auth-continue-btn');
+    if(btn) btn.disabled = false;
+    document.getElementById('auth-provider-msg').style.display = 'none';
+  }
+}
+
+async function authContinue(){
+  _authSetError('');
+  const email = (document.getElementById('auth-email').value || '').trim().toLowerCase();
+  if(!email || !email.includes('@')){ _authSetError('Please enter a valid email address.'); return; }
+
+  const domain = email.split('@')[1];
+  let provider;
+  let providerName;
+
+  if(GMAIL_DOMAINS.includes(domain)){
+    provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ login_hint: email });
+    providerName = 'Google';
+  } else if(YAHOO_DOMAINS.includes(domain)){
+    provider = new firebase.auth.OAuthProvider('yahoo.com');
+    provider.setCustomParameters({ login_hint: email });
+    providerName = 'Yahoo';
+  } else {
+    _authSetError('Please use your Gmail or Yahoo email address to sign in.');
+    return;
+  }
+
+  // Show loading state
+  document.getElementById('auth-email').disabled = true;
+  document.getElementById('auth-continue-btn').disabled = true;
+  document.getElementById('auth-provider-text').textContent = 'Opening ' + providerName + ' sign-in…';
+  document.getElementById('auth-provider-msg').style.display = 'block';
+
+  try{
+    await _fbAuth.signInWithPopup(provider);
+    // onAuthStateChanged will take it from here
+  } catch(e){
+    let msg = e.message || 'Sign-in failed.';
+    if(e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request')
+      msg = 'Sign-in window was closed. Please try again.';
+    else if(e.code === 'auth/popup-blocked')
+      msg = 'Pop-up was blocked by your browser. Please allow pop-ups for this site and try again.';
+    else if(e.code === 'auth/account-exists-with-different-credential')
+      msg = 'This email is already registered with a different sign-in method.';
+    else if(e.code === 'auth/operation-not-allowed')
+      msg = providerName + ' sign-in is not enabled yet. Please ask the admin to enable it in Firebase Console.';
+    _authSetError(msg);
+  }
+}
+
+function _authMapUser(firebaseUser){
+  const email = (firebaseUser.email || '').toLowerCase();
+  const isAdmin = ADMIN_EMAILS.includes(email);
+  const residents = DB.residents || [];
+  const resident = residents.find(r => r.email && r.email.toLowerCase() === email);
+  _currentUser = {
+    uid: firebaseUser.uid,
+    email,
+    displayName: firebaseUser.displayName || '',
+    residentId:  resident?.id  || null,
+    isAdmin,
+    name: resident?.name || (isAdmin ? 'Admin' : firebaseUser.displayName || email),
+  };
+  return _currentUser;
+}
+
+function _authApplyRole(){
+  if(!_currentUser) return;
+  const { isAdmin, name, displayName } = _currentUser;
+  const label = name || displayName || 'User';
+  const badge = document.getElementById('auth-user-badge');
+  const signoutBtn = document.getElementById('auth-signout-btn');
+  if(badge){ badge.textContent = '👤 ' + label; badge.style.display = 'inline'; }
+  if(signoutBtn) signoutBtn.style.display = 'inline-block';
+
+  if(!isAdmin){
+    // Residents: hide admin-only tabs, jump to statement
+    ['bookings','expenses','residents','readings'].forEach(t => {
+      const mob = document.getElementById('mn-' + t);
+      if(mob) mob.style.display = 'none';
+      document.querySelectorAll('#mainNav .nav-link').forEach(l => {
+        if(l.textContent.toLowerCase().includes(t.replace('readings','reading').replace('residents','resident')))
+          l.parentElement.style.display = 'none';
+      });
+    });
+    showTab('statement');
+  }
+}
+
+async function authSignOut(){
+  if(!confirm('Sign out of Metro Water?')) return;
+  await _fbAuth.signOut();
+  _currentUser = null;
+  const badge = document.getElementById('auth-user-badge');
+  const signoutBtn = document.getElementById('auth-signout-btn');
+  if(badge) badge.style.display = 'none';
+  if(signoutBtn) signoutBtn.style.display = 'none';
+  // Restore all tabs in case a resident was logged in
+  ['bookings','expenses','residents','readings'].forEach(t => {
+    const mob = document.getElementById('mn-' + t);
+    if(mob) mob.style.display = '';
+    document.querySelectorAll('#mainNav .nav-link').forEach(l => {
+      if(l.textContent.toLowerCase().includes(t.replace('readings','reading').replace('residents','resident')))
+        l.parentElement.style.display = '';
+    });
+  });
+  showLoginOverlay();
+}
+
+// ================================================================
+// INIT
+// ================================================================
 async function init(){
   try{
     _fbInit();
+    _authInit();
 
     const msgEl = document.getElementById('fb-loading-msg');
     if(msgEl) msgEl.textContent = 'Loading your data…';
@@ -2368,9 +2564,23 @@ async function init(){
     }
     seedData();
     runMigrations();
-    _fbHideOverlay();
     _fbSetStatus('Cloud sync on', '#aaa');
-    bootApp();
+
+    // Keep loading overlay up until auth state is confirmed
+    if(msgEl) msgEl.textContent = 'Checking sign-in…';
+    let _appBooted = false;
+
+    _fbAuth.onAuthStateChanged(async firebaseUser => {
+      _fbHideOverlay();
+      if(firebaseUser){
+        _authMapUser(firebaseUser);
+        hideLoginOverlay();
+        if(!_appBooted){ _appBooted = true; bootApp(); }
+        _authApplyRole();
+      } else {
+        showLoginOverlay();
+      }
+    });
 
   } catch(e){
     console.error('Firebase init failed:', e);
