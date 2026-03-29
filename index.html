@@ -528,6 +528,17 @@ footer { background:#fff; border-top:1px solid #e9ecef; padding:1rem 0; margin-t
         <input type="email" id="er-email" class="form-control" placeholder="resident@gmail.com or resident@yahoo.com">
       </div>
 
+      <hr class="my-3">
+      <p class="small fw-semibold text-muted mb-2"><i class="bi bi-shield-lock me-1"></i>ACCESS ROLE</p>
+      <div class="mb-2">
+        <label class="form-label small fw-semibold">Role</label>
+        <select id="er-role" class="form-select">
+          <option value="user">User — Restricted access (view + own bookings)</option>
+          <option value="admin">Admin — Full access to all sections</option>
+        </select>
+        <div class="form-text"><i class="bi bi-info-circle me-1"></i>Admin can add months, manage expenses, view all data, and edit any booking.</div>
+      </div>
+
     </div>
     <div class="modal-footer">
       <button class="btn btn-primary" onclick="saveEditResident()"><i class="bi bi-save me-1"></i>Save</button>
@@ -1318,6 +1329,14 @@ function renderDashboard(){
       });
     });
     _dashInitDone=true;
+
+    // For non-admin users: default dashboard to show only their own consumption
+    if(!_isAdmin() && _myResidentId()){
+      _dashExcluded.clear();
+      S.get('residents').forEach(r => {
+        if(r.id !== _myResidentId()) _dashExcluded.add(r.id);
+      });
+    }
   }
 
   // Refresh From/To dropdowns every render (picks up new months, preserves selection)
@@ -1411,7 +1430,7 @@ function renderMeterLog(my){
           <td>${bk?`<small>${bk.bookingDate} (${residentName(bk.bookedBy)})</small>`:'<span class="text-muted small">Standalone</span>'}</td>
           <td>${vol?`<span class="badge badge-calculated">${fmt(vol)} L</span>`:'<span class="badge badge-pending">Pending next reading</span>'}</td>
           <td class="text-muted small">${l.note||'—'}</td>
-          <td><button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="deleteMeterEntry('${l.id}')"><i class="bi bi-trash"></i></button></td>
+          <td>${_isAdmin()?`<button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="deleteMeterEntry('${l.id}')"><i class="bi bi-trash"></i></button>`:''}</td>
         </tr>`;
       }).join('')}
       </tbody>
@@ -1423,8 +1442,23 @@ function renderMeterLog(my){
 // ================================================================
 function populateResidentSelects(){
   const res=S.get('residents');
-  const opts='<option value="">— Select —</option>'+res.map(r=>`<option value="${r.id}">${r.name}</option>`).join('');
-  ['b-by','b-paid-by','eb-by','eb-paid-by'].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=opts; });
+  const allOpts='<option value="">— Select —</option>'+res.map(r=>`<option value="${r.id}">${r.name}</option>`).join('');
+
+  // For non-admin: "Booked By" and "Paid By" in Add form show only their own name
+  const myId = _myResidentId();
+  const myRes = myId ? res.find(r=>r.id===myId) : null;
+  const userOpts = myRes
+    ? `<option value="${myRes.id}">${myRes.name}</option>`
+    : allOpts;
+
+  if(!_isAdmin() && myId){
+    const bBy=document.getElementById('b-by'); if(bBy){ bBy.innerHTML=userOpts; bBy.value=myId; }
+    const bPaid=document.getElementById('b-paid-by'); if(bPaid){ bPaid.innerHTML=userOpts; bPaid.value=myId; }
+  } else {
+    ['b-by','b-paid-by'].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=allOpts; });
+  }
+  // Edit booking form always shows all (admin opens it; users can't open others' bookings)
+  ['eb-by','eb-paid-by'].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=allOpts; });
 
   // Also populate booking link select in meter log form
   const bkOpts='<option value="">— Standalone / Month-end —</option>'+
@@ -1557,10 +1591,13 @@ function renderBookings(){
           <td>${vol?`<span class="badge badge-calculated">${fmt(vol)} L</span>`:'<span class="badge badge-pending">Pending</span>'}</td>
           <td>${fmtMoney((b.paymentAmount||0)+(b.tipAmount||0))}</td>
           <td><span class="badge ${b.status==='Delivered'?'bg-success':b.status==='Booked'?'bg-primary':'bg-secondary'}">${b.status}</span></td>
-          <td>
-            <button class="btn btn-sm btn-outline-secondary py-0 px-2 me-1" onclick="editBooking('${b.id}')"><i class="bi bi-pencil"></i></button>
-            <button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="deleteBooking('${b.id}')"><i class="bi bi-trash"></i></button>
-          </td>
+          <td>${(()=>{
+            const canEdit = _isAdmin() || b.bookedBy === _myResidentId();
+            return canEdit
+              ? `<button class="btn btn-sm btn-outline-secondary py-0 px-2 me-1" onclick="editBooking('${b.id}')"><i class="bi bi-pencil"></i></button>
+                 <button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="deleteBooking('${b.id}')"><i class="bi bi-trash"></i></button>`
+              : '';
+          })()}</td>
         </tr>`;
       }).join('')}</tbody>
     </table></div>`
@@ -1654,6 +1691,9 @@ function addExpense(e){
   showAlert('Expense added!'); renderExpenses(); rebuildMonthSelect();
 }
 function renderExpenses(){
+  // Hide Add Expense form for non-admin users
+  const addCard = document.querySelector('#tab-expenses .card.mb-4');
+  if(addCard) addCard.style.display = _isAdmin() ? '' : 'none';
   document.getElementById('e-date').value=today();
   const es=S.get('expenses').filter(e=>e.monthYear===currentMonth);
   const total=es.reduce((s,e)=>s+e.amount,0);
@@ -1668,7 +1708,7 @@ function renderExpenses(){
         <td>${e.date}</td><td>${e.description}</td>
         <td class="text-end">${fmtMoney(e.amount)}</td>
         <td class="text-end text-muted">${fmtMoney(e.amount/7)}</td>
-        <td><button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="deleteExpense('${e.id}')"><i class="bi bi-trash"></i></button></td>
+        <td>${_isAdmin()?`<button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="deleteExpense('${e.id}')"><i class="bi bi-trash"></i></button>`:''}</td>
       </tr>`).join('')}</tbody>
       <tfoot class="table-light fw-semibold">
         <tr><td colspan="2">Total</td><td class="text-end">${fmtMoney(total)}</td><td class="text-end text-muted">${fmtMoney(total/7)}</td><td></td></tr>
@@ -1685,6 +1725,9 @@ function deleteExpense(id){
 // FLAT METER READINGS
 // ================================================================
 function renderReadings(){
+  // Hide Save button and meter-log delete buttons for non-admin users
+  const saveBtn = document.querySelector('[onclick="saveReadings()"]');
+  if(saveBtn) saveBtn.style.display = _isAdmin() ? '' : 'none';
   const prevMY=prevMonthStr(currentMonth);
   document.getElementById('readings-month-label').textContent=monthLabel(currentMonth);
   const residents=S.get('residents');
@@ -1799,7 +1842,7 @@ function renderStatement(){
     if(closed){
       const info=(DB.closedMonths||[]).find(c=>c.monthYear===currentMonth);
       closeArea.innerHTML=`<span class="badge bg-success fs-6 px-3 py-2"><i class="bi bi-lock-fill me-2"></i>Closed${info?.closedAt?' on '+info.closedAt:''}</span>`;
-    } else {
+    } else if(_isAdmin()){
       closeArea.innerHTML=`<button class="btn btn-warning fw-semibold" onclick="closeMonth()"><i class="bi bi-lock me-2"></i>Close ${label}</button>`;
     }
   }
@@ -2219,25 +2262,32 @@ function copyWhatsApp(){
 // RESIDENTS
 // ================================================================
 function renderResidents(){
-  const res=S.get('residents');
+  let res = S.get('residents');
+  // Non-admin: show only own card
+  if(!_isAdmin() && _currentUser?.residentId){
+    res = res.filter(r => r.id === _currentUser.residentId);
+  }
   const cards = res.map((r,i) => {
-    // name = Owner Name (billing), mobile = Registered Mobile (Metro Water)
     const ownerName = r.name || '—';
     const regName   = r.registeredName  || r.nickname || '—';
-    const regMobile = r.mobile          || '—';   // existing mobile = registered mobile
+    const regMobile = r.mobile          || '—';
     const resident  = r.resident        || '—';
     const resMobile = r.residentMobile  || '—';
+    const roleBadge = r.role === 'admin'
+      ? `<span class="badge bg-danger ms-2" style="font-size:.65rem;">Admin</span>`
+      : `<span class="badge bg-secondary ms-2" style="font-size:.65rem;">User</span>`;
+    const editBtn = _isAdmin()
+      ? `<button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="editResident('${r.id}')"><i class="bi bi-pencil"></i></button>`
+      : '';
     return `
     <div class="col-12 col-md-6 col-xl-4">
       <div class="card h-100" style="border-radius:10px;">
         <div class="card-header d-flex justify-content-between align-items-center py-2" style="background:#e8f4fd;">
           <div>
-            <span class="fw-bold text-primary" style="font-size:1rem;">${ownerName}</span>
+            <span class="fw-bold text-primary" style="font-size:1rem;">${ownerName}</span>${roleBadge}
             <br><code style="font-size:.75rem;color:#6c757d;">${r.cmc||'—'}</code>
           </div>
-          <button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="editResident('${r.id}')">
-            <i class="bi bi-pencil"></i>
-          </button>
+          ${editBtn}
         </div>
         <div class="card-body py-2 px-3" style="font-size:.85rem;">
           <div class="row g-0 mb-1" style="background:#fff8e1;border-radius:6px;padding:6px 8px;">
@@ -2268,6 +2318,7 @@ function editResident(id){
   document.getElementById('er-resident').value  = r.resident       || '';
   document.getElementById('er-resmobile').value = r.residentMobile || '';
   document.getElementById('er-email').value     = r.email          || '';
+  document.getElementById('er-role').value      = r.role           || 'user';
   new bootstrap.Modal(document.getElementById('editResidentModal')).show();
 }
 function saveEditResident(){
@@ -2280,6 +2331,7 @@ function saveEditResident(){
     resident:       document.getElementById('er-resident').value.trim(),
     residentMobile: document.getElementById('er-resmobile').value.trim(),
     email:          document.getElementById('er-email').value.trim().toLowerCase(),
+    role:           document.getElementById('er-role').value,
   });
   bootstrap.Modal.getInstance(document.getElementById('editResidentModal')).hide();
   showAlert('Resident updated!'); renderResidents();
@@ -2486,11 +2538,16 @@ async function authContinue(){
   }
 }
 
+// ── Helpers accessible from any render function ──────────────────
+function _isAdmin(){ return !!(_currentUser && _currentUser.isAdmin); }
+function _myResidentId(){ return _currentUser ? _currentUser.residentId : null; }
+
 function _authMapUser(firebaseUser){
   const email = (firebaseUser.email || '').toLowerCase();
-  const isAdmin = ADMIN_EMAILS.includes(email);
   const residents = DB.residents || [];
   const resident = residents.find(r => r.email && r.email.toLowerCase() === email);
+  // Admin if: email is in hardcoded ADMIN_EMAILS OR resident record has role='admin'
+  const isAdmin = ADMIN_EMAILS.includes(email) || (resident && resident.role === 'admin');
   _currentUser = {
     uid: firebaseUser.uid,
     email,
@@ -2506,22 +2563,27 @@ function _authApplyRole(){
   if(!_currentUser) return;
   const { isAdmin, name, displayName } = _currentUser;
   const label = name || displayName || 'User';
+
+  // Show user badge + sign-out button
   const badge = document.getElementById('auth-user-badge');
   const signoutBtn = document.getElementById('auth-signout-btn');
   if(badge){ badge.textContent = '👤 ' + label; badge.style.display = 'inline'; }
   if(signoutBtn) signoutBtn.style.display = 'inline-block';
 
-  if(!isAdmin){
-    // Residents: hide admin-only tabs, jump to statement
-    ['bookings','expenses','residents','readings'].forEach(t => {
-      const mob = document.getElementById('mn-' + t);
-      if(mob) mob.style.display = 'none';
-      document.querySelectorAll('#mainNav .nav-link').forEach(l => {
-        if(l.textContent.toLowerCase().includes(t.replace('readings','reading').replace('residents','resident')))
-          l.parentElement.style.display = 'none';
-      });
-    });
-    showTab('statement');
+  // "New Month" button — Admin only
+  const newMonthBtn = document.getElementById('new-month-btn');
+  if(newMonthBtn) newMonthBtn.style.display = isAdmin ? '' : 'none';
+
+  // Statement buttons — Admin only
+  const whatsappBtn = document.querySelector('[onclick="showWhatsApp()"]');
+  if(whatsappBtn) whatsappBtn.style.display = isAdmin ? '' : 'none';
+  // (Close button is rendered dynamically — handled in renderStatement)
+
+  if(isAdmin){
+    showTab('dashboard');
+  } else {
+    // Users get all tabs visible but with content restrictions applied in each render fn
+    showTab('dashboard');
   }
 }
 

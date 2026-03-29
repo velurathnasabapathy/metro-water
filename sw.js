@@ -1,5 +1,5 @@
 // Metro Water PWA — Service Worker
-const CACHE = 'metro-water-v5';
+const CACHE = 'metro-water-v6';
 const ASSETS = [
   '/metro-water/',
   '/metro-water/index.html',
