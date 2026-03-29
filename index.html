@@ -1287,7 +1287,7 @@ function _dashRenderChips(datasets, selIds){
              opacity:${excluded?'0.32':'1'}"
       title="${excluded?'Click to show':'Click to hide'}">
       <span style="width:7px;height:7px;border-radius:50%;background:${color};flex-shrink:0"></span>
-      ${r.name}
+      ${r.resident||r.name}
     </span>`;
   }).join('');
   // Update toggle-all label
