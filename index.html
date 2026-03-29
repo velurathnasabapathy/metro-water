@@ -493,19 +493,51 @@ footer { background:#fff; border-top:1px solid #e9ecef; padding:1rem 0; margin-t
 
 <!-- Edit Resident Modal -->
 <div class="modal fade" id="editResidentModal" tabindex="-1">
-  <div class="modal-dialog"><div class="modal-content">
+  <div class="modal-dialog modal-lg"><div class="modal-content">
     <div class="modal-header"><h5 class="modal-title"><i class="bi bi-person-gear me-2"></i>Edit Resident</h5>
       <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
     <div class="modal-body">
       <input type="hidden" id="er-id">
-      <div class="mb-3"><label class="form-label small fw-semibold">Full Name</label>
-        <input type="text" id="er-name" class="form-control"></div>
-      <div class="mb-3"><label class="form-label small fw-semibold">CMC No.</label>
-        <input type="text" id="er-cmc" class="form-control"></div>
-      <div class="mb-3"><label class="form-label small fw-semibold">Mobile</label>
-        <input type="text" id="er-mobile" class="form-control"></div>
-      <div class="mb-3"><label class="form-label small fw-semibold">Registered Name (Metro Water Dept)</label>
-        <input type="text" id="er-nick" class="form-control" placeholder="Name on Metro Water booking account"></div>
+
+      <!-- CMC No. -->
+      <div class="mb-3">
+        <label class="form-label small fw-semibold"><i class="bi bi-hash text-primary me-1"></i>CMC No.</label>
+        <input type="text" id="er-cmc" class="form-control" placeholder="e.g. 08/095/07822/000">
+      </div>
+
+      <hr class="my-3">
+      <p class="small fw-semibold text-muted mb-2"><i class="bi bi-building me-1"></i>OWNERSHIP DETAILS</p>
+      <div class="mb-3">
+        <label class="form-label small fw-semibold">Owner Name <small class="text-muted fw-normal">(used in statements &amp; billing)</small></label>
+        <input type="text" id="er-name" class="form-control" placeholder="Flat owner's full name">
+      </div>
+
+      <hr class="my-3">
+      <p class="small fw-semibold text-muted mb-2"><i class="bi bi-droplet me-1"></i>METRO WATER REGISTRATION</p>
+      <div class="row g-2 mb-3">
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold">Registered Name</label>
+          <input type="text" id="er-regname" class="form-control" placeholder="Name on Metro Water account">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold">Registered Mobile</label>
+          <input type="tel" id="er-mobile" class="form-control" placeholder="Mobile on Metro Water account">
+        </div>
+      </div>
+
+      <hr class="my-3">
+      <p class="small fw-semibold text-muted mb-2"><i class="bi bi-person me-1"></i>CURRENT RESIDENT</p>
+      <div class="row g-2 mb-2">
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold">Resident Name</label>
+          <input type="text" id="er-resident" class="form-control" placeholder="Person currently living here">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold">Resident Mobile <small class="text-muted fw-normal">(for OTP login)</small></label>
+          <input type="tel" id="er-resmobile" class="form-control" placeholder="Resident's mobile for login">
+        </div>
+      </div>
+
     </div>
     <div class="modal-footer">
       <button class="btn btn-primary" onclick="saveEditResident()"><i class="bi bi-save me-1"></i>Save</button>
@@ -2198,27 +2230,64 @@ function copyWhatsApp(){
 // ================================================================
 function renderResidents(){
   const res=S.get('residents');
-  document.getElementById('residents-table').innerHTML=`
-    <table class="table table-hover mb-0">
-      <thead><tr><th>#</th><th>Name</th><th>CMC No.</th><th>Mobile</th><th>Registered Name (Metro Water)</th><th></th></tr></thead>
-      <tbody>${res.map((r,i)=>`<tr>
-        <td class="text-muted">${i+1}</td><td class="fw-semibold">${r.name}</td>
-        <td><code>${r.cmc||'—'}</code></td><td>${r.mobile||'—'}</td><td>${r.nickname||'—'}</td>
-        <td><button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="editResident('${r.id}')"><i class="bi bi-pencil"></i></button></td>
-      </tr>`).join('')}</tbody>
-    </table>`;
+  const cards = res.map((r,i) => {
+    // name = Owner Name (billing), mobile = Registered Mobile (Metro Water)
+    const ownerName = r.name || '—';
+    const regName   = r.registeredName  || r.nickname || '—';
+    const regMobile = r.mobile          || '—';   // existing mobile = registered mobile
+    const resident  = r.resident        || '—';
+    const resMobile = r.residentMobile  || '—';
+    return `
+    <div class="col-12 col-md-6 col-xl-4">
+      <div class="card h-100" style="border-radius:10px;">
+        <div class="card-header d-flex justify-content-between align-items-center py-2" style="background:#e8f4fd;">
+          <div>
+            <span class="fw-bold text-primary" style="font-size:1rem;">${ownerName}</span>
+            <br><code style="font-size:.75rem;color:#6c757d;">${r.cmc||'—'}</code>
+          </div>
+          <button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="editResident('${r.id}')">
+            <i class="bi bi-pencil"></i>
+          </button>
+        </div>
+        <div class="card-body py-2 px-3" style="font-size:.85rem;">
+          <div class="row g-0 mb-1" style="background:#fff8e1;border-radius:6px;padding:6px 8px;">
+            <div class="col-12 mb-1"><span class="text-muted fw-semibold" style="font-size:.7rem;text-transform:uppercase;letter-spacing:.5px;"><i class="bi bi-droplet me-1"></i>Metro Water Registration</span></div>
+            <div class="col-6"><span class="text-muted" style="font-size:.72rem;">Reg. Name</span><br><span class="fw-semibold">${regName}</span></div>
+            <div class="col-6"><span class="text-muted" style="font-size:.72rem;">Reg. Mobile</span><br>${regMobile}</div>
+          </div>
+          <div class="row g-0 mt-1" style="background:#f0fff4;border-radius:6px;padding:6px 8px;">
+            <div class="col-12 mb-1"><span class="text-muted fw-semibold" style="font-size:.7rem;text-transform:uppercase;letter-spacing:.5px;"><i class="bi bi-person me-1"></i>Current Resident</span></div>
+            <div class="col-6"><span class="text-muted" style="font-size:.72rem;">Name</span><br><span class="fw-semibold">${resident}</span></div>
+            <div class="col-6"><span class="text-muted" style="font-size:.72rem;">Mobile</span><br>${resMobile}</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('residents-table').innerHTML =
+    `<div class="row g-3 p-3">${cards}</div>`;
 }
 function editResident(id){
   const r=S.get('residents').find(x=>x.id===id); if(!r) return;
-  document.getElementById('er-id').value=id; document.getElementById('er-name').value=r.name;
-  document.getElementById('er-cmc').value=r.cmc||''; document.getElementById('er-mobile').value=r.mobile||'';
-  document.getElementById('er-nick').value=r.nickname||'';
+  document.getElementById('er-id').value       = id;
+  document.getElementById('er-name').value      = r.name           || '';   // Owner Name
+  document.getElementById('er-cmc').value       = r.cmc            || '';
+  document.getElementById('er-mobile').value    = r.mobile         || '';   // Registered Mobile
+  document.getElementById('er-regname').value   = r.registeredName || r.nickname || '';
+  document.getElementById('er-resident').value  = r.resident       || '';
+  document.getElementById('er-resmobile').value = r.residentMobile || '';
   new bootstrap.Modal(document.getElementById('editResidentModal')).show();
 }
 function saveEditResident(){
-  const id=document.getElementById('er-id').value;
-  S.update('residents',id,{name:document.getElementById('er-name').value,cmc:document.getElementById('er-cmc').value,
-    mobile:document.getElementById('er-mobile').value,nickname:document.getElementById('er-nick').value});
+  const id = document.getElementById('er-id').value;
+  S.update('residents', id, {
+    name:           document.getElementById('er-name').value.trim(),     // Owner Name
+    cmc:            document.getElementById('er-cmc').value.trim(),
+    mobile:         document.getElementById('er-mobile').value.trim(),   // Registered Mobile
+    registeredName: document.getElementById('er-regname').value.trim(),
+    resident:       document.getElementById('er-resident').value.trim(),
+    residentMobile: document.getElementById('er-resmobile').value.trim(),
+  });
   bootstrap.Modal.getInstance(document.getElementById('editResidentModal')).hide();
   showAlert('Resident updated!'); renderResidents();
 }
@@ -2479,7 +2548,10 @@ function _authMapUser(firebaseUser){
   let resident = null;
   if(phone){
     const digits = phone.replace(/\D/g,'').slice(-10);  // last 10 digits
-    resident = residents.find(r => r.mobile && r.mobile.replace(/\D/g,'').slice(-10) === digits);
+    resident = residents.find(r =>
+      (r.mobile        && r.mobile.replace(/\D/g,'').slice(-10) === digits) ||
+      (r.residentMobile && r.residentMobile.replace(/\D/g,'').slice(-10) === digits)
+    );
   }
   if(!resident && email){
     resident = residents.find(r => r.email && r.email.toLowerCase() === email);
