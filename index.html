@@ -1822,6 +1822,18 @@ function closeMonth(){
   showAlert(`${monthLabel(my)} closed ✓  —  ${monthLabel(currentMonth)} is now open.`,'success');
 }
 
+function openMonth(){
+  const my=currentMonth;
+  if(!isMonthClosed(my)){ showAlert(monthLabel(my)+' is already open.','info'); return; }
+  if(!confirm('Re-open '+monthLabel(my)+' for editing?\n\nThis will allow changes to readings, bookings and expenses for this month.')) return;
+  DB.closedMonths=(DB.closedMonths||[]).filter(c=>c.monthYear!==my);
+  scheduleSave();
+  rebuildMonthSelect();
+  updateMonthBar();
+  renderStatement();
+  showAlert(monthLabel(my)+' re-opened for editing.','info');
+}
+
 // ================================================================
 // STATEMENT
 // ================================================================
@@ -1841,7 +1853,8 @@ function renderStatement(){
   if(closeArea){
     if(closed){
       const info=(DB.closedMonths||[]).find(c=>c.monthYear===currentMonth);
-      closeArea.innerHTML=`<span class="badge bg-success fs-6 px-3 py-2"><i class="bi bi-lock-fill me-2"></i>Closed${info?.closedAt?' on '+info.closedAt:''}</span>`;
+      const openBtn=_isAdmin()?`<button class="btn btn-sm btn-outline-secondary ms-2" onclick="openMonth()"><i class="bi bi-lock-open me-1"></i>Open Month</button>`:'';
+      closeArea.innerHTML=`<span class="badge bg-success fs-6 px-3 py-2"><i class="bi bi-lock-fill me-2"></i>Closed${info?.closedAt?' on '+info.closedAt:''}</span>${openBtn}`;
     } else if(_isAdmin()){
       closeArea.innerHTML=`<button class="btn btn-warning fw-semibold" onclick="closeMonth()"><i class="bi bi-lock me-2"></i>Close ${label}</button>`;
     }
