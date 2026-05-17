@@ -310,8 +310,22 @@ footer { background:#fff; border-top:1px solid #e9ecef; padding:1rem 0; margin-t
               <input type="number" id="b-meter-end" class="form-control" placeholder="e.g. 1984200">
             </div>
             <div class="col-md-2 col-6">
+              <label class="form-label small fw-semibold">Payment Mode</label>
+              <select id="b-pay-mode" class="form-select" onchange="onPayModeChange()">
+                <option value="Cash">Cash</option>
+                <option value="UPI">UPI</option>
+                <option value="Net Banking">Net Banking</option>
+                <option value="Debit Card">Debit Card</option>
+                <option value="Credit Card">Credit Card</option>
+              </select>
+            </div>
+            <div class="col-md-2 col-6">
               <label class="form-label small fw-semibold">Amount Paid (₹) *</label>
-              <input type="number" id="b-pay" class="form-control" value="828.30" step="0.01" required>
+              <input type="number" id="b-pay" class="form-control" value="867" step="0.01" required>
+            </div>
+            <div class="col-md-2 col-6" id="b-bank-charge-wrap" style="display:none">
+              <label class="form-label small fw-semibold">Bank Charges (₹)</label>
+              <input type="number" id="b-bank-charge" class="form-control" value="0" step="0.01" min="0">
             </div>
             <div class="col-md-2 col-6" id="b-tip-wrap">
               <label class="form-label small fw-semibold">Tip (₹)</label>
@@ -451,8 +465,18 @@ footer { background:#fff; border-top:1px solid #e9ecef; padding:1rem 0; margin-t
           <input type="date" id="eb-delivery" class="form-control"></div>
         <div class="col-md-4"><label class="form-label small fw-semibold">Capacity (L)</label>
           <input type="number" id="eb-cap" class="form-control"></div>
-        <div class="col-md-4"><label class="form-label small fw-semibold">Payment (₹)</label>
+        <div class="col-md-4"><label class="form-label small fw-semibold">Payment Mode</label>
+          <select id="eb-pay-mode" class="form-select" onchange="onEditPayModeChange()">
+            <option value="Cash">Cash</option>
+            <option value="UPI">UPI</option>
+            <option value="Net Banking">Net Banking</option>
+            <option value="Debit Card">Debit Card</option>
+            <option value="Credit Card">Credit Card</option>
+          </select></div>
+        <div class="col-md-4"><label class="form-label small fw-semibold">Amount Paid (₹)</label>
           <input type="number" id="eb-pay" class="form-control" step="0.01"></div>
+        <div class="col-md-4" id="eb-bank-charge-wrap"><label class="form-label small fw-semibold">Bank Charges (₹)</label>
+          <input type="number" id="eb-bank-charge" class="form-control" value="0" step="0.01" min="0"></div>
         <div class="col-md-4"><label class="form-label small fw-semibold">Tip (₹)</label>
           <input type="number" id="eb-tip" class="form-control"></div>
         <div class="col-md-4"><label class="form-label small fw-semibold">Status</label>
@@ -827,7 +851,7 @@ function bookingSummary(my) {
     count: bs.length,
     totalCapacity: bs.reduce((s,b)=>s+(b.capacity||0),0),
     totalVolume: bs.reduce((s,b)=>s+(vols[b.id]||0),0),
-    totalAmount: bs.reduce((s,b)=>s+(b.paymentAmount||0)+(b.tipAmount||0),0),
+    totalAmount: bs.reduce((s,b)=>s+(b.paymentAmount||0)+(b.tipAmount||0)+(b.bankCharge||0),0),
     pendingCount: bs.filter(b=>!vols[b.id]).length
   };
 }
@@ -842,7 +866,7 @@ function computeStatement(my) {
   const expenses  = S.get('expenses').filter(e=>e.monthYear===my);
   const payments  = S.get('payments').filter(p=>p.monthYear===my);
 
-  const totalWater = bookings.reduce((s,b)=>s+(b.paymentAmount||0)+(b.tipAmount||0),0);
+  const totalWater = bookings.reduce((s,b)=>s+(b.paymentAmount||0)+(b.tipAmount||0)+(b.bankCharge||0),0);
   const totalOther = expenses.reduce((s,e)=>s+e.amount,0);
   const perFlatOther = totalOther/7;
 
@@ -872,7 +896,7 @@ function computeStatement(my) {
     const cons = ov ? ov.consumption : (start!=null&&end!=null)?Math.max(0,end-start):0;
     const pct=totalCons>0?cons/totalCons:0;
     const waterCharge=Math.round(pct*totalWater*100)/100;
-    const bookingsPaid=bookings.filter(b=>(b.paidBy||b.bookedBy)===r.id).reduce((s,b)=>s+(b.paymentAmount||0)+(b.tipAmount||0),0);
+    const bookingsPaid=bookings.filter(b=>(b.paidBy||b.bookedBy)===r.id).reduce((s,b)=>s+(b.paymentAmount||0)+(b.tipAmount||0)+(b.bankCharge||0),0);
     const directPaid=payments.filter(p=>p.residentId===r.id).reduce((s,p)=>s+p.amount,0);
     const paid=bookingsPaid+directPaid;
     const prevBal=prevBals[r.id]||0;
@@ -905,7 +929,7 @@ function computePrevBalances(my, residents) {
     const bs=S.get('bookings').filter(b=>b.monthYear===m);
     const es=S.get('expenses').filter(e=>e.monthYear===m);
     const ps=S.get('payments').filter(p=>p.monthYear===m);
-    const tw=bs.reduce((s,b)=>s+(b.paymentAmount||0)+(b.tipAmount||0),0);
+    const tw=bs.reduce((s,b)=>s+(b.paymentAmount||0)+(b.tipAmount||0)+(b.bankCharge||0),0);
     const to=es.reduce((s,e)=>s+e.amount,0);
     const pfo=to/7;
     // Reading for 1st of m = period start; reading for 1st of next month = period end
@@ -928,7 +952,7 @@ function computePrevBalances(my, residents) {
       const wc=Math.round(pct*tw*100)/100;
       // Round grossDue identically to computeStatement (nearest ₹1, including running balance)
       const grossDue=Math.round(wc+pfo+bals[r.id]);
-      const bookingsPaid=bs.filter(b=>(b.paidBy||b.bookedBy)===r.id).reduce((s,b)=>s+(b.paymentAmount||0)+(b.tipAmount||0),0);
+      const bookingsPaid=bs.filter(b=>(b.paidBy||b.bookedBy)===r.id).reduce((s,b)=>s+(b.paymentAmount||0)+(b.tipAmount||0)+(b.bankCharge||0),0);
       const paid=ps.filter(p=>p.residentId===r.id).reduce((s,p)=>s+p.amount,0)+bookingsPaid;
       bals[r.id]=grossDue-paid; // SET rolling balance, not +=
     });
@@ -1472,8 +1496,8 @@ function populateResidentSelects(){
 function onSourceChange(){
   const src=document.querySelector('input[name="b-src"]:checked')?.value||'Corp';
   const isCorp=src==='Corp';
-  // Amount: default 828.30 for Corp, clear for Private
-  if(isCorp) document.getElementById('b-pay').value='828.30';
+  // Amount: default 867 for Corp, clear for Private
+  if(isCorp) document.getElementById('b-pay').value='867';
   else document.getElementById('b-pay').value='';
   // Tip: show fixed ₹100 for Corp, hide for Private
   document.getElementById('b-tip-wrap').style.display=isCorp?'':'none';
@@ -1481,6 +1505,22 @@ function onSourceChange(){
   // Volume: hide for Corp (always 9000), show for Private
   document.getElementById('b-cap-wrap').style.display=isCorp?'none':'';
   if(!isCorp) document.getElementById('b-cap').value='';
+  // Reset payment mode and bank charges
+  document.getElementById('b-pay-mode').value='Cash';
+  document.getElementById('b-bank-charge-wrap').style.display='none';
+  document.getElementById('b-bank-charge').value='0';
+}
+function onPayModeChange(){
+  const mode=document.getElementById('b-pay-mode').value;
+  const isCash=mode==='Cash';
+  document.getElementById('b-bank-charge-wrap').style.display=isCash?'none':'';
+  if(isCash) document.getElementById('b-bank-charge').value='0';
+}
+function onEditPayModeChange(){
+  const mode=document.getElementById('eb-pay-mode').value;
+  const isCash=mode==='Cash';
+  document.getElementById('eb-bank-charge-wrap').style.display=isCash?'none':'';
+  if(isCash) document.getElementById('eb-bank-charge').value='0';
 }
 function onBookingDateChange(){
   const bDate=document.getElementById('b-date').value;
@@ -1520,6 +1560,8 @@ function addBooking(e){
     deliveryDate:document.getElementById('b-delivery').value||bookingDate||null,
     paymentAmount:parseFloat(document.getElementById('b-pay').value)||0,
     tipAmount:isCorp?100:0,
+    paymentMode:document.getElementById('b-pay-mode').value||'Cash',
+    bankCharge:parseFloat(document.getElementById('b-bank-charge').value)||0,
     status:'Booked',
   });
 
@@ -1576,7 +1618,7 @@ function renderBookings(){
         <th>Source</th><th>Date</th><th>Booking No.</th><th>Booked By</th><th>Paid By</th>
         <th><i class="bi bi-gauge text-warning me-1"></i>Meter Reading</th>
         <th>Actual Vol (L)</th>
-        <th>Total (₹)</th><th>Status</th><th></th>
+        <th>Mode</th><th>Amount (₹)</th><th>Bank Chg (₹)</th><th>Total (₹)</th><th>Status</th><th></th>
       </tr></thead>
       <tbody>${bs.map(b=>{
         const mReading=getMeterReadingForBooking(b.id);
@@ -1589,7 +1631,10 @@ function renderBookings(){
           <td>${residentName(b.paidBy||b.bookedBy)}</td>
           <td class="text-muted">${mReading?mReading:'<span class="text-warning small">Not recorded</span>'}</td>
           <td>${vol?`<span class="badge badge-calculated">${fmt(vol)} L</span>`:'<span class="badge badge-pending">Pending</span>'}</td>
-          <td>${fmtMoney((b.paymentAmount||0)+(b.tipAmount||0))}</td>
+          <td><span class="badge ${b.paymentMode&&b.paymentMode!=='Cash'?'bg-info text-dark':'bg-secondary'} px-2">${b.paymentMode||'Cash'}</span></td>
+          <td class="text-end">${fmtMoney(b.paymentAmount||0)}</td>
+          <td class="text-end ${b.bankCharge?'text-danger fw-semibold':''}">${b.bankCharge?fmtMoney(b.bankCharge):'—'}</td>
+          <td class="text-end fw-semibold">${fmtMoney((b.paymentAmount||0)+(b.tipAmount||0)+(b.bankCharge||0))}</td>
           <td><span class="badge ${b.status==='Delivered'?'bg-success':b.status==='Booked'?'bg-primary':'bg-secondary'}">${b.status}</span></td>
           <td>${(()=>{
             const canEdit = _isAdmin() || b.bookedBy === _myResidentId();
@@ -1615,9 +1660,12 @@ function editBooking(id){
   document.getElementById('eb-paid-by').value=b.paidBy||b.bookedBy||'';
   document.getElementById('eb-delivery').value=b.deliveryDate||'';
   document.getElementById('eb-cap').value=b.capacity||9000;
+  document.getElementById('eb-pay-mode').value=b.paymentMode||'Cash';
   document.getElementById('eb-pay').value=b.paymentAmount||'';
+  document.getElementById('eb-bank-charge').value=b.bankCharge||0;
   document.getElementById('eb-tip').value=b.tipAmount||0;
   document.getElementById('eb-status').value=b.status||'Delivered';
+  onEditPayModeChange(); // show/hide bank charges field
   // Load linked meter readings
   const mEntry=S.get('meterlog').find(l=>l.bookingId===id);
   document.getElementById('eb-meter-start').value=mEntry?(mEntry.startReading||mEntry.reading||''):'';
@@ -1648,6 +1696,8 @@ function saveEditBooking(){
     capacity:parseInt(document.getElementById('eb-cap').value)||9000,
     paymentAmount:parseFloat(document.getElementById('eb-pay').value)||0,
     tipAmount:parseFloat(document.getElementById('eb-tip').value)||0,
+    paymentMode:document.getElementById('eb-pay-mode').value||'Cash',
+    bankCharge:parseFloat(document.getElementById('eb-bank-charge').value)||0,
     status:document.getElementById('eb-status').value,
   });
   // Update linked meterlog entry with edited readings
@@ -2145,7 +2195,7 @@ function renderStatement(){
     .map(b=>({
       residentId: b.paidBy||b.bookedBy,
       date: b.bookingDate||'—',
-      amount: (b.paymentAmount||0)+(b.tipAmount||0),
+      amount: (b.paymentAmount||0)+(b.tipAmount||0)+(b.bankCharge||0),
       notes: `Paid at booking (${b.bookingDate||'—'})`,
       isBooking: true,
       bookingId: b.id
